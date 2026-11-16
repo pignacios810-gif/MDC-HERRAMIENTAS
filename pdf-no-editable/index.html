@@ -1,0 +1,402 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>PDF no editable</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<style>
+  :root{
+    --bg:#f6f7f9; --surface:#ffffff; --surface-2:#f0f2f5; --border:#dfe3e8;
+    --text:#14181f; --muted:#5d6673; --accent:#1f3fa6; --accent-soft:#e7ecfb;
+    --ok:#18794e; --ok-soft:#e3f4ea; --err:#b42318; --err-soft:#fdeceb;
+    --radius:12px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0f1217; --surface:#171b22; --surface-2:#1e232c; --border:#2b313c;
+      --text:#e8ebf0; --muted:#9aa3b0; --accent:#8aa4ff; --accent-soft:#1d2645;
+      --ok:#4cc38a; --ok-soft:#14291f; --err:#ff8a7a; --err-soft:#2e1714;
+      color-scheme:dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0f1217; --surface:#171b22; --surface-2:#1e232c; --border:#2b313c;
+    --text:#e8ebf0; --muted:#9aa3b0; --accent:#8aa4ff; --accent-soft:#1d2645;
+    --ok:#4cc38a; --ok-soft:#14291f; --err:#ff8a7a; --err-soft:#2e1714;
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 Inter,system-ui,-apple-system,"Segoe UI",sans-serif}
+  .wrap{max-width:860px;margin:0 auto;padding-block:32px 64px;padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px))}
+  h1{font-size:26px;margin:0 0 6px;letter-spacing:-.01em}
+  .sub{color:var(--muted);margin:0 0 24px}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px}
+  .drop{border:2px dashed var(--border);border-radius:var(--radius);padding:36px 16px;text-align:center;cursor:pointer;transition:.15s;background:var(--surface)}
+  .drop:hover,.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+  .drop strong{display:block;font-size:17px;margin-bottom:4px}
+  .drop span{color:var(--muted);font-size:14px}
+  .opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-top:16px}
+  label.f{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--muted);font-weight:500}
+  select,input[type=range]{width:100%}
+  select{padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font:inherit}
+  .chk{display:flex;gap:10px;align-items:flex-start;font-size:14px;color:var(--text)}
+  .chk input{margin-top:3px;width:16px;height:16px;accent-color:var(--accent)}
+  .chk small{display:block;color:var(--muted)}
+  .note{margin-top:16px;padding:10px 14px;border-radius:8px;background:var(--surface-2);color:var(--muted);font-size:13px}
+  .list{display:flex;flex-direction:column;gap:12px;margin-top:20px}
+  .item{display:flex;gap:14px;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px}
+  .thumb{width:52px;height:68px;flex:none;border-radius:6px;background:var(--surface-2);border:1px solid var(--border);object-fit:cover}
+  .meta{flex:1;min-width:0}
+  .name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .status{font-size:13px;color:var(--muted)}
+  .status.ok{color:var(--ok)} .status.err{color:var(--err)}
+  .bar{height:6px;background:var(--surface-2);border-radius:99px;margin-top:8px;overflow:hidden}
+  .bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+  .btn{appearance:none;border:0;border-radius:8px;padding:9px 14px;font:600 14px Inter,system-ui,sans-serif;cursor:pointer;background:var(--accent);color:#fff;text-decoration:none;white-space:nowrap}
+  :root[data-theme="dark"] .btn{color:#0f1217}
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .btn{color:#0f1217}}
+  :root .btn.ghost,:root:not([data-theme="light"]) .btn.ghost{color:var(--accent)}
+  .btn[hidden]{display:none}
+  .btn.ghost{background:transparent;color:var(--accent);border:1px solid var(--border)}
+  .actions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}
+  .x{appearance:none;border:0;background:transparent;color:var(--muted);font-size:20px;line-height:1;width:32px;height:32px;border-radius:8px;cursor:pointer;flex:none}
+  .x:hover{background:var(--surface-2);color:var(--err)}
+  @media (max-width:560px){ .item{flex-wrap:wrap} .item .btn{width:100%;text-align:center} }
+</style>
+<div class="wrap">
+  <h1>PDF no editable</h1>
+  <p class="sub">Convierte cada página en imagen (adiós campos editables) y agrega una capa de texto OCR para que el documento siga siendo buscable.</p>
+
+  <div class="card">
+    <div class="drop" id="drop" tabindex="0" role="button" aria-label="Seleccionar archivos PDF">
+      <strong>Arrastra aquí tus PDF</strong>
+      <span>o haz clic para seleccionarlos · puedes subir varios a la vez</span>
+      <input type="file" id="file" accept="application/pdf,.pdf" multiple hidden>
+    </div>
+
+    <div class="opts">
+      <label class="f">Resolución
+        <select id="dpi">
+          <option value="150">150 dpi · archivo ligero</option>
+          <option value="200">200 dpi · equilibrado</option>
+          <option value="300" selected>300 dpi · mejor OCR</option>
+        </select>
+      </label>
+      <label class="f">Calidad de imagen: <b id="qv">85%</b>
+        <input type="range" id="q" min="50" max="95" step="5" value="85">
+      </label>
+      <label class="chk"><input type="checkbox" id="ocr" checked>
+        <span>Agregar OCR (español)<small>Permite buscar y copiar texto. Más lento.</small></span>
+      </label>
+    </div>
+
+    <div class="note">Todo se procesa en tu navegador: los PDF no se suben a ningún servidor. Solo se descargan las librerías y el modelo de OCR la primera vez.</div>
+  </div>
+
+  <div class="list" id="list"></div>
+  <div class="actions">
+    <button class="btn ghost" id="clear" hidden>Limpiar</button>
+    <button class="btn ghost" id="all" hidden>Descargar todos</button>
+  </div>
+</div>
+
+<script>
+const PDFJS_BASE = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/';
+pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_BASE + 'build/pdf.worker.min.js';
+const { PDFDocument, StandardFonts, pushGraphicsState, popGraphicsState, setTextRenderingMode, TextRenderingMode } = PDFLib;
+
+const $ = id => document.getElementById(id);
+const drop = $('drop'), fileIn = $('file'), list = $('list'), allBtn = $('all'), clearBtn = $('clear');
+$('q').addEventListener('input', e => $('qv').textContent = e.target.value + '%');
+
+drop.addEventListener('click', () => fileIn.click());
+drop.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileIn.click(); } });
+['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => addFiles(e.dataTransfer.files));
+fileIn.addEventListener('change', e => { addFiles(e.target.files); fileIn.value = ''; });
+
+const queue = [], results = [];
+let running = false;
+
+function addFiles(files){
+  [...files].filter(f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name)).forEach(file => {
+    const el = document.createElement('div');
+    el.className = 'item';
+    el.innerHTML = `<img class="thumb" alt=""><div class="meta"><div class="name"></div>
+      <div class="status">En cola</div><div class="bar"><i></i></div></div>
+      <button class="btn dl" hidden>Descargar</button>
+      <button class="x" title="Quitar" aria-label="Quitar">×</button>`;
+    el.querySelector('.name').textContent = file.name;
+    list.appendChild(el);
+    const item = { file, el, cancelled: false, url: null };
+    el.querySelector('.x').addEventListener('click', () => removeItem(item));
+    queue.push(item);
+  });
+  updateActions();
+  run();
+}
+
+/* ---------- Quitar / limpiar ---------- */
+function removeItem(item){
+  item.cancelled = true;
+  const qi = queue.indexOf(item); if (qi >= 0) queue.splice(qi, 1);
+  const ri = results.indexOf(item); if (ri >= 0) results.splice(ri, 1);
+  if (item.url) URL.revokeObjectURL(item.url);
+  item.el.remove();
+  updateActions();
+}
+function clearAll(){
+  [...queue, ...results].forEach(removeItem);
+  [...list.children].forEach(el => el.remove()); // incluye el que se está procesando o con error
+  if (current) current.cancelled = true;
+  updateActions();
+}
+function updateActions(){
+  clearBtn.hidden = list.children.length === 0;
+  allBtn.hidden = results.length < 2;
+}
+clearBtn.addEventListener('click', clearAll);
+
+let current = null;
+function checkCancel(item){ if (item.cancelled){ const e = new Error('cancelado'); e.cancelled = true; throw e; } }
+
+async function run(){
+  if (running) return;
+  running = true;
+  while (queue.length){
+    const item = queue.shift();
+    current = item;
+    try { await processFile(item); }
+    catch (err){
+      if (err && err.cancelled || item.cancelled) continue;
+      console.error(err);
+      const msg = err && err.name === 'PasswordException' ? 'PDF protegido con contraseña: quítale la contraseña y vuelve a cargarlo'
+        : 'Error: ' + (err && err.message ? err.message : err);
+      setStatus(item, msg, 'err');
+    }
+  }
+  running = false;
+  current = null;
+}
+
+function setStatus(item, text, cls){
+  const s = item.el.querySelector('.status');
+  s.textContent = text; s.className = 'status' + (cls ? ' ' + cls : '');
+}
+function setBar(item, frac){ item.el.querySelector('.bar i').style.width = Math.round(frac * 100) + '%'; }
+function fmtSize(b){ return b > 1048576 ? (b/1048576).toFixed(1) + ' MB' : Math.round(b/1024) + ' KB'; }
+
+/* ---------- OCR worker (se crea una sola vez) ---------- */
+let workerPromise = null, ocrProgress = null, ocrBlocked = false;
+const WORKER_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js';
+// 1) Modelo publicado junto a la página (liga compartida, donde solo se permite descargar del mismo sitio)
+// 2) CDN (archivo HTML abierto directo en el navegador)
+const LOCAL_MODEL = 'tessdata/spa-traineddata.wasm'; // modelo español (gzip) publicado con la página
+async function langSources(){
+  const out = [];
+  if (/^https?:/.test(location.protocol)){
+    try {
+      const r = await fetch(new URL(LOCAL_MODEL, location.href).href);
+      if (r.ok) out.push({ langs: [{ code: 'spa', data: new Uint8Array(await r.arrayBuffer()) }] });
+    } catch {}
+  }
+  out.push({ langs: 'spa', langPath: 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/spa/4.0.0_best_int' });
+  out.push({ langs: 'spa' });
+  return out;
+}
+
+// Algunos visores (p. ej. la vista previa de archivos) bloquean los workers creados desde "blob:".
+// Se intenta primero el modo normal y, si falla, se carga el worker como URL "data:".
+async function workerVariants(){
+  const v = [{ workerPath: WORKER_URL }];
+  try {
+    const src = await fetch(WORKER_URL).then(r => { if (!r.ok) throw new Error(r.status); return r.text(); });
+    const b64 = btoa(unescape(encodeURIComponent(src)));
+    v.push({ workerPath: 'data:text/javascript;base64,' + b64, workerBlobURL: false });
+  } catch {}
+  return v;
+}
+function getWorker(){
+  if (!workerPromise){
+    workerPromise = (async () => {
+      const base = {
+        corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1',
+        logger: m => { if (ocrProgress) ocrProgress(m); },
+        errorHandler: e => console.warn('OCR:', e)
+      };
+      let last;
+      const deadline = Date.now() + 60000; // tiempo máximo total para lograr iniciar el OCR
+      const sources = await langSources();
+      for (const wv of await workerVariants()){
+        for (const ls of sources){
+          if (Date.now() > deadline) throw last || new Error('No se pudo iniciar el OCR');
+          try {
+            const opts = { ...base, ...wv };
+            if (ls.langPath) opts.langPath = ls.langPath;
+            // Si una fuente del modelo no responde, no esperar para siempre
+            return await Promise.race([
+              Tesseract.createWorker(ls.langs, 1, opts),
+              new Promise((_, rej) => setTimeout(() => rej(new Error('El OCR tardó demasiado en iniciar')), Math.max(5000, Math.min(30000, deadline - Date.now()))))
+            ]);
+          } catch (e){ last = e; console.warn('OCR: intento fallido', e); }
+        }
+      }
+      throw last || new Error('No se pudo iniciar el OCR');
+    })().catch(e => { workerPromise = null; throw e; });
+  }
+  return workerPromise;
+}
+
+function wordsOf(data){
+  if (data.words && data.words.length) return data.words;
+  const out = [];
+  (data.blocks || []).forEach(b => (b.paragraphs || []).forEach(p =>
+    (p.lines || []).forEach(l => (l.words || []).forEach(w => out.push(w)))));
+  return out;
+}
+
+function addTextLayer(page, data, font, scale, pageH){
+  const words = wordsOf(data);
+  if (!words.length) return;
+  page.pushOperators(pushGraphicsState(), setTextRenderingMode(TextRenderingMode.Invisible));
+  for (const w of words){
+    const text = (w.text || '').replace(/[^\x20-\x7E\xA0-\xFF]/g, '').trim();
+    if (!text) continue;
+    const b = w.bbox, wPt = (b.x1 - b.x0) * scale, hPt = (b.y1 - b.y0) * scale;
+    let unit;
+    try { unit = font.widthOfTextAtSize(text, 1); } catch { continue; }
+    if (!unit || wPt <= 0) continue;
+    const size = Math.max(1, Math.min(wPt / unit, hPt * 2.5));
+    try {
+      page.drawText(text, { x: b.x0 * scale, y: pageH - b.y1 * scale + hPt * 0.15, size, font });
+    } catch { /* carácter no codificable: se omite la palabra */ }
+  }
+  page.pushOperators(popGraphicsState());
+}
+
+/* ---------- Conversión ---------- */
+async function processFile(item){
+  const dpi = +$('dpi').value, quality = +$('q').value / 100, doOcr = $('ocr').checked;
+  setStatus(item, 'Abriendo PDF…');
+  const buf = await item.file.arrayBuffer();
+  const task = pdfjsLib.getDocument({
+    data: buf,
+    standardFontDataUrl: PDFJS_BASE + 'standard_fonts/',
+    cMapUrl: PDFJS_BASE + 'cmaps/', cMapPacked: true
+  });
+  task.onPassword = (update, reason) => {
+    let p = null;
+    try { p = prompt((reason === 2 ? 'Contraseña incorrecta. ' : '') + `"${item.file.name}" está protegido. Escribe la contraseña:`); } catch {}
+    if (!p) task.destroy(); else update(p);
+  };
+  const src = await task.promise;
+  const out = await PDFDocument.create();
+  const font = doOcr ? await out.embedFont(StandardFonts.Helvetica) : null;
+  const n = src.numPages;
+  let ocrFailed = false;
+
+  for (let i = 1; i <= n; i++){
+    if (item.cancelled){ await src.destroy(); checkCancel(item); }
+    setStatus(item, `Página ${i} de ${n} · convirtiendo a imagen`);
+    const page = await src.getPage(i);
+    const base = page.getViewport({ scale: 1 });
+    const vp = page.getViewport({ scale: dpi / 72 });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.ceil(vp.width); canvas.height = Math.ceil(vp.height);
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // ENABLE_STORAGE pinta los valores capturados en los campos del formulario, como al imprimir
+    await page.render({ canvasContext: ctx, viewport: vp, annotationMode: pdfjsLib.AnnotationMode.ENABLE_STORAGE }).promise;
+
+    if (i === 1) item.el.querySelector('.thumb').src = canvas.toDataURL('image/jpeg', 0.6);
+
+    const jpg = await new Promise(r => canvas.toBlob(b => r(b), 'image/jpeg', quality)).then(b => b.arrayBuffer());
+    const img = await out.embedJpg(jpg);
+    const W = base.width, H = base.height;
+    const p = out.addPage([W, H]);
+    p.drawImage(img, { x: 0, y: 0, width: W, height: H });
+
+    if (doOcr && !ocrFailed){
+      setStatus(item, `Página ${i} de ${n} · leyendo texto (OCR)`);
+      ocrProgress = m => {
+        if (m.status === 'recognizing text') setBar(item, (i - 1 + 0.3 + 0.7 * m.progress) / n);
+        else if (/load|initializ/i.test(m.status) && i === 1) setStatus(item, 'Preparando OCR (solo la primera vez)…');
+      };
+      try {
+        const worker = await getWorker();
+        const { data } = await worker.recognize(canvas, {}, { text: true, blocks: true });
+        addTextLayer(p, data, font, W / canvas.width, H);
+      } catch (e){
+        // Si el OCR no puede correr aquí, el PDF se entrega igual (no editable) pero sin texto buscable
+        console.warn('OCR no disponible:', e);
+        ocrFailed = true; ocrBlocked = true;
+      } finally { ocrProgress = null; }
+    }
+    setBar(item, i / n);
+    page.cleanup();
+    canvas.width = canvas.height = 0;
+  }
+
+  const baseName = item.file.name.replace(/\.pdf$/i, '');
+  out.setTitle(baseName);
+  out.setProducer('PDF no editable');
+  out.setCreator('PDF no editable');
+  const bytes = await out.save();
+  await src.destroy();
+  checkCancel(item);
+
+  const blob = new Blob([bytes], { type: 'application/pdf' });
+  const url = URL.createObjectURL(blob);
+  const fname = `${baseName} (no editable).pdf`;
+  item.blob = blob;
+  const btn = item.el.querySelector('.dl');
+  btn.hidden = false;
+  btn.onclick = () => saveItem(item);
+  const ocrTxt = !doOcr ? '' : ocrFailed
+    ? ' · sin OCR (este navegador lo bloqueó; el PDF sí quedó no editable)'
+    : ' · con OCR';
+  setStatus(item, `Listo · ${n} página${n > 1 ? 's' : ''} · ${fmtSize(item.file.size)} → ${fmtSize(blob.size)}${ocrTxt}`, 'ok');
+  item.url = url; item.fname = fname;
+  results.push(item);
+  updateActions();
+}
+
+/* ---------- Descargas ----------
+   Dentro de la liga de Claude las descargas pasan por el permiso "downloads" (el visor pide confirmar).
+   Abierto como archivo normal, se usa un enlace de descarga clásico. */
+const downloadsP = (window.claude && typeof window.claude.use === 'function')
+  ? window.claude.use('downloads').catch(() => null) : Promise.resolve(null);
+
+async function saveItem(item){
+  const dl = await downloadsP;
+  if (dl){
+    try { await dl.save({ filename: item.fname, data: item.blob }); return true; }
+    catch (e){
+      if (e && e.code === 'declined') return false;
+      if (e && e.code === 'rate_limited'){ setStatus(item, 'Espera un momento y vuelve a dar clic en Descargar', 'err'); return false; }
+      setStatus(item, 'No se pudo descargar aquí (' + (e && e.code || 'error') + ')', 'err');
+      return false;
+    }
+  }
+  const a = document.createElement('a'); a.href = item.url; a.download = item.fname;
+  document.body.appendChild(a); a.click(); a.remove();
+  return true;
+}
+
+allBtn.addEventListener('click', async () => {
+  allBtn.disabled = true;
+  try {
+    for (const r of [...results]){
+      await saveItem(r);
+      await new Promise(res => setTimeout(res, 400));
+    }
+  } finally { allBtn.disabled = false; }
+});
+</script>
+
+</body></html>

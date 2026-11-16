@@ -1,0 +1,553 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<meta charset="utf-8">
+<title>Validador de Expedientes</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: mesa de revisión — una columna; arriba la carga del lote, abajo un renglón por expediente que se abre en su expediente completo. */
+:root{
+  --bg:#f5f6f4; --paper:#ffffff; --ink:#1b2430; --muted:#5d6876; --line:#dfe3e0; --soft:#eef1ee;
+  --accent:#1f4f6e; --accent-ink:#ffffff; --accent-soft:#e3edf3;
+  --ok:#2f7a4b; --ok-bg:#e3f2e8; --warn:#8a6410; --warn-bg:#fbf0d4; --bad:#a33a2c; --bad-bg:#f9e1dc;
+  --grey:#5f6670; --grey-bg:#eceeee; --unk:#9a4f12; --unk-bg:#fbe7d6;
+  --f-display:"IBM Plex Sans Condensed","Arial Narrow",Arial,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Arial,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#12171d; --paper:#19202a; --ink:#e4e8ec; --muted:#9aa5b1; --line:#2b3542; --soft:#1f2732;
+  --accent:#7fb3d5; --accent-ink:#0f1a24; --accent-soft:#1d3142;
+  --ok:#7ccf9a; --ok-bg:#183326; --warn:#e6c26a; --warn-bg:#352b12; --bad:#f09a8c; --bad-bg:#3a1d19;
+  --grey:#b0b7bf; --grey-bg:#262d36; --unk:#f0b37a; --unk-bg:#3a2715; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12171d; --paper:#19202a; --ink:#e4e8ec; --muted:#9aa5b1; --line:#2b3542; --soft:#1f2732;
+  --accent:#7fb3d5; --accent-ink:#0f1a24; --accent-soft:#1d3142;
+  --ok:#7ccf9a; --ok-bg:#183326; --warn:#e6c26a; --warn-bg:#352b12; --bad:#f09a8c; --bad-bg:#3a1d19;
+  --grey:#b0b7bf; --grey-bg:#262d36; --unk:#f0b37a; --unk-bg:#3a2715; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.5;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1180px;margin:0 auto;padding-block:28px 64px;display:grid;gap:26px}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0;line-height:1.15}
+h1{font-size:clamp(26px,4vw,36px);font-weight:700}
+h2{font-size:22px;font-weight:600;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+h3{font-size:16px;font-weight:600}
+.count{font-family:var(--f-mono);font-size:13px;color:var(--muted);font-weight:400}
+.eyebrow{font-family:var(--f-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.lede{color:var(--muted);max-width:78ch;margin:0}
+.small{font-size:12px;color:var(--muted)}
+header{display:grid;gap:8px}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:20px;display:grid;gap:16px;min-width:0}
+.drop{border:1.5px dashed var(--line);border-radius:6px;padding:22px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s}
+.drop:hover,.drop.over,.drop:focus-within{border-color:var(--accent);background:var(--accent-soft)}
+.drop b{font-family:var(--f-display);font-size:17px;font-weight:600}
+.drop input{position:absolute;width:1px;height:1px;opacity:0}
+.files{display:grid;gap:6px;max-height:300px;overflow:auto}
+.file{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:10px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:4px;background:var(--soft)}
+.file .name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ext{font-family:var(--f-mono);font-size:10.5px;font-weight:500;padding:2px 6px;border-radius:3px;background:var(--accent-soft);color:var(--accent);text-transform:uppercase}
+.file .meta{font-family:var(--f-mono);font-size:11.5px;color:var(--muted);white-space:nowrap}
+.x{background:none;border:0;color:var(--muted);cursor:pointer;font-size:16px;padding:0 4px}
+.x:hover{color:var(--bad)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.btn{font:inherit;font-size:13.5px;background:transparent;border:1px solid var(--line);color:var(--ink);border-radius:4px;padding:8px 14px;cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.sm{font-size:12.5px;padding:5px 10px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.progress{display:grid;gap:8px}
+.bar{height:6px;background:var(--soft);border-radius:3px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .25s}
+.log{font-family:var(--f-mono);font-size:12px;color:var(--muted);max-height:140px;overflow:auto;display:grid;gap:2px}
+.log .err{color:var(--bad)}
+.err-box{background:var(--bad-bg);color:var(--bad);border-radius:4px;padding:10px 12px}
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:6px;background:var(--paper)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:var(--f-mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:500;background:var(--soft)}
+tr:last-child td{border-bottom:0}
+td.num,th.num{text-align:right;font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.sum-row{cursor:pointer}
+.sum-row:hover td{background:var(--soft)}
+.exp-name{font-weight:600}
+.docs{display:flex;gap:4px;flex-wrap:wrap}
+.dchip{font-family:var(--f-mono);font-size:10.5px;padding:1px 6px;border-radius:3px;border:1px solid var(--line);color:var(--muted)}
+.dchip.on{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+.pill{display:inline-block;font-family:var(--f-mono);font-size:11px;font-weight:500;padding:2px 8px;border-radius:10px;white-space:nowrap}
+.p-alta{background:var(--bad-bg);color:var(--bad)} .p-media{background:var(--warn-bg);color:var(--warn)} .p-baja{background:var(--grey-bg);color:var(--grey)}
+.p-ok{background:var(--ok-bg);color:var(--ok)} .p-unk{background:var(--unk-bg);color:var(--unk)}
+.zero{color:var(--muted);opacity:.6}
+details.exp{background:var(--paper);border:1px solid var(--line);border-radius:6px;min-width:0}
+details.exp>summary{list-style:none;cursor:pointer;padding:14px 18px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+details.exp>summary::-webkit-details-marker{display:none}
+details.exp>summary::before{content:"▸";color:var(--muted);transition:transform .15s}
+details.exp[open]>summary::before{transform:rotate(90deg)}
+details.exp>summary .grow{flex:1 1 260px;min-width:0}
+.exp-body{padding:0 18px 18px;display:grid;gap:18px;min-width:0}
+.concl{margin:0;max-width:95ch}
+.disc{display:grid;gap:10px}
+.d{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;padding:10px 12px;border:1px solid var(--line);border-radius:4px;border-left-width:4px}
+.d.alta{border-left-color:var(--bad)} .d.media{border-left-color:var(--warn)} .d.baja{border-left-color:var(--grey)}
+.d .t{font-weight:600}
+.d .ab{grid-column:2;font-size:13px;color:var(--ink);display:grid;gap:2px}
+.d .ab span{color:var(--muted)}
+.d .why{grid-column:2;font-size:12.5px;color:var(--muted)}
+.dudas{margin:0;padding-left:20px;display:grid;gap:8px;max-width:110ch}
+.dudas li b{font-weight:600}
+.ok{color:var(--ok)} .no{color:var(--bad)} .rd{color:var(--warn)}
+.ex-tag{font-family:var(--f-mono);font-size:10.5px;padding:2px 7px;border-radius:3px;background:var(--unk-bg);color:var(--unk);letter-spacing:.04em;text-transform:uppercase}
+.move{font:inherit;font-size:12px;padding:3px 6px;border:1px solid var(--line);border-radius:4px;background:var(--paper);color:var(--ink);max-width:220px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px}
+.checklist{margin:0;padding-left:18px;display:grid;gap:4px;font-size:13px;color:var(--muted)}
+.chg{display:grid;gap:10px}
+.chg-item{border:1px solid var(--line);border-radius:6px;padding:10px 12px;display:grid;gap:6px;background:var(--paper)}
+.chg-item .u{font-size:12px;color:var(--muted)}
+.chg-ab{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
+.chg-ab > div{display:grid;gap:4px;align-content:start;min-width:0}
+.chg-ab .lb{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600}
+.chg-ab img{max-width:100%;height:auto;border:1px solid var(--line);border-radius:4px;background:#fff}
+.chg-ab .txt{font-family:var(--f-mono);font-size:12px;overflow-wrap:anywhere}
+.tag-v{display:inline-block;font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;background:var(--accent-soft);color:var(--accent);margin-left:6px;vertical-align:middle}
+.ef{display:flex;flex-wrap:wrap;gap:6px}
+.ef span{font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid var(--line)}
+.ef .res{background:var(--ok-bg);color:var(--ok);border-color:transparent}
+.ef .nue{background:var(--bad-bg);color:var(--bad);border-color:transparent}
+.valid{display:grid;gap:8px}
+.vcard{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border-radius:8px;border:1px solid transparent}
+.vcard .ic{flex:none;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:16px;color:var(--paper)}
+.vcard b{display:block;font-size:14.5px}
+.vcard span{font-size:13px}
+.vcard.ok{background:var(--ok-bg);border-color:var(--ok)} .vcard.ok .ic{background:var(--ok)} .vcard.ok b{color:var(--ok)}
+.vcard.observaciones{background:var(--warn-bg);border-color:var(--warn)} .vcard.observaciones .ic{background:var(--warn)} .vcard.observaciones b{color:var(--warn)}
+.vcard.critico{background:var(--bad-bg);border-color:var(--bad)} .vcard.critico .ic{background:var(--bad)} .vcard.critico b{color:var(--bad)}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">Anticipa Finsus · Fideicomiso F/0394 · cruce de expedientes</span>
+    <h1>Validador de Expedientes</h1>
+    <p class="lede">Sube los archivos de uno o varios expedientes a la vez (contrato, pagaré, convenio, KYC, tabla de amortización, cotizador, CSF). La página los separa por expediente, cruza los datos con las reglas de la revisión manual y te deja descargar el Excel de cada uno con la misma estructura. Si vuelves a subir un expediente corregido, la página lo compara con la versión anterior y te muestra qué cambió. Todo se procesa en tu navegador; ningún archivo sale de tu equipo.</p>
+  </header>
+
+  <section class="card" aria-labelledby="h-carga">
+    <h2 id="h-carga">Carga del lote <span class="count" id="fileCount">0 archivos</span></h2>
+    <label class="drop" id="drop" for="fileInput">
+      <b>Arrastra aquí los archivos o haz clic para elegirlos</b>
+      <span class="small">PDF, Word (.docx), Excel (.xlsx) y fotos o capturas de pantalla (JPG/PNG), incluida la pantalla "Datos Captura" del sistema. Puedes mezclar varios expedientes: se agrupan por número de crédito, ID, RFC o nombre.</span>
+      <input type="file" id="fileInput" multiple accept=".pdf,.docx,.xlsx,.xls,.xlsm,.jpg,.jpeg,.png,.webp">
+    </label>
+    <div class="files" id="files"></div>
+    <div class="row">
+      <button class="btn primary" id="runBtn" type="button" disabled>Revisar expedientes</button>
+      <button class="btn" id="stopBtn" type="button" hidden>Detener</button>
+      <button class="btn" id="clearBtn" type="button" hidden>Quitar todo</button>
+      <span class="small" id="hint">El KYC y las hojas escaneadas se leen con OCR: calcula unos 5 segundos por página escaneada.</span>
+    </div>
+    <div class="progress" id="progress" hidden>
+      <div class="bar"><i id="barFill"></i></div>
+      <div class="log" id="log" aria-live="polite"></div>
+    </div>
+    <div class="err-box" id="errBox" hidden></div>
+  </section>
+
+  <section aria-labelledby="h-res" style="display:grid;gap:14px">
+    <div class="row" style="justify-content:space-between">
+      <h2 id="h-res">Resultados <span class="count" id="resCount"></span></h2>
+      <div class="row">
+        <button class="btn" id="forgetBtn" type="button" hidden>Olvidar versiones guardadas</button>
+        <button class="btn" id="zipBtn" type="button" disabled>Descargar todos (.zip)</button>
+      </div>
+    </div>
+    <div class="valid" id="valid" role="status" aria-live="polite"></div>
+    <p class="small" id="exNote" style="margin:0">Abajo hay un expediente de <b>ejemplo</b> con datos inventados para que veas cómo se presenta el resultado. Desaparece cuando revises tus archivos.</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Expediente</th><th>Documentos</th><th class="num">Alta</th><th class="num">Media</th><th class="num">Baja</th><th class="num">Dudas</th><th>Excel</th></tr></thead>
+        <tbody id="sumBody"></tbody>
+      </table>
+    </div>
+    <div id="details" style="display:grid;gap:12px"></div>
+  </section>
+
+  <section class="card" aria-labelledby="h-reglas">
+    <h3 id="h-reglas">Qué revisa cada expediente</h3>
+    <div class="grid2">
+      <ul class="checklist">
+        <li>Fechas, montos, tasas, CAT, plazo y pago mensual entre contrato, pagaré, TA, convenio, cotizador y KYC.</li>
+        <li>Cantidad con número contra cantidad con letra (contrato, pagaré, convenio).</li>
+        <li>Suma principal del pagaré = crédito + comisión SDGC con IVA, y el "Monto del Pagaré" del convenio.</li>
+        <li>Recálculo del calendario: capital, intereses por días (base 360), saldo final y totales.</li>
+        <li>Comisiones del Anexo D contra el cotizador, incluido el porcentaje escrito de la SDGC.</li>
+        <li>Factor de meses de ventas, meses sin ventas y cobertura de la retención.</li>
+      </ul>
+      <ul class="checklist">
+        <li>CLABE: longitud, dígito verificador, banco, plaza y cuenta embebida.</li>
+        <li>Representante, obligado solidario y firmante del contrato del procesador.</li>
+        <li>Procesador sin nombre en Anexo B, convenio y notificación de cesión.</li>
+        <li>Domicilios del contrato contra pagaré, convenio y KYC (persona física y moral).</li>
+        <li>KYC: ventas anuales, antigüedad, domicilios, socios y apoderado contra el Anexo de Datos Generales.</li>
+        <li>Pantalla "Datos Captura" del sistema: fechas, procesador, tasas, comisiones, CAT, plazo, retención, CLABE y campos vacíos.</li>
+        <li>Regla de fechas: la fecha del contrato con el procesador debe ser la misma en el Anexo B del contrato, el Anexo A del convenio y la notificación al procesador (puede ser distinta a la firma); todas las demás fechas del contrato, pagaré, convenio y KYC deben ser la fecha de firma.</li>
+        <li>Campos variables poblados: los que en la plantilla van resaltados en turquesa (carátula, fechas del contrato y sus anexos, referencias, Anexos A, B, D y F, datos del pagaré y del convenio) y los datos clave del Anexo de Datos Generales, aunque el documento ya no traiga el color. También busca marcadores sin llenar como [*], «…» o {…}.</li>
+        <li>Pagaré = Monto + "Comisión SGDC Monto" del cotizador (D8 + D12); "Monto del Pagaré" del convenio = suma de los pagos (columna H del cotizador).</li>
+        <li>Personas que firman como "Representante Legal" en pagaré o convenio sin ser el apoderado del Anexo de Datos Generales.</li>
+        <li>Criterios acordados que ya no se reportan: el número de caso Anticipa del KYC, el ejecutivo fijo del KYC frente a quien entrevista, las casillas PLD que se dejan en blanco y el plazo de 18 meses del cotizador (16 + 2).</li>
+        <li>Nueva versión de un expediente: qué archivos cambiaron, el texto antes y después, recortes de las zonas que cambiaron en páginas escaneadas, celdas de Excel modificadas y qué discrepancias se resolvieron o aparecieron.</li>
+        <li>Lo que no se pudo leer o confirmar queda como duda con una pregunta concreta.</li>
+      </ul>
+    </div>
+    <p class="small" style="margin:0">Límites: la página no interpreta firmas ni casillas marcadas (solo detecta si cambiaron entre versiones), y el OCR puede confundir 0/O, 1/l o 5/S. Confirma contra el original todo lo marcado como "No legible". Para comparar versiones, la página guarda una copia reducida de cada expediente solo en este navegador (hasta 4 versiones por expediente); puedes borrarla con "Olvidar versiones guardadas". Si subes juntas la versión anterior y la nueva, se usa la más reciente y se compara contra la otra.</p>
+  </section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="ocr/tesseract.min.js"></script>
+<script src="lib/exceljs.min.js"></script>
+<script src="lib/jszip.min.js"></script>
+<script src="engine.js"></script>
+<script src="xlsxout.js"></script>
+<script src="versiones.js"></script>
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmt$ = n => n == null || !isFinite(n) ? "—" : "$" + Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+/* ---------- ejemplo con datos inventados ---------- */
+const EXAMPLE = { example: true, report: {
+  expediente: "Ferretería Ejemplo S.A. de C.V. · Expediente 10001 · Crédito 1-5019-000",
+  conclusion: "24 datos coinciden entre documentos. Se encontraron 5 discrepancias (1 de prioridad alta) y 4 dudas. Lo más importante: 'monto del pagaré' en el convenio.",
+  documentos: [{ nombre: "CONTRATO_10001.pdf", tipo: "Contrato" }, { nombre: "PAGARE_10001.pdf", tipo: "Pagaré" }, { nombre: "CONVENIO_10001.pdf", tipo: "Convenio de adhesión" }, { nombre: "KYC_10001.pdf", tipo: "KYC" }, { nombre: "TA_10001.xlsx", tipo: "Tabla de amortización (Excel)" }, { nombre: "Cotizador_10001.xlsx", tipo: "Cotizador (Excel)" }],
+  faltantes: ["Constancia de Situación Fiscal"],
+  discrepancias: [
+    { prio: "Alta", campo: "'Monto del Pagaré' en el convenio", a: "Convenio, Anexo B: $700,000.00.", b: "Pagaré, párrafo 1: Suma Principal $600,000.00. La cifra del convenio es el monto total a pagar (incluye intereses).", why: "El anexo del convenio no coincide con el título de crédito." },
+    { prio: "Media", campo: "Plazo del crédito", a: "Cotizador 'PDF Oferta'!C19: 18 meses (16 + 2 'sólo interés').", b: "Carátula del contrato: 16 meses; pagaré y TA: 16 pagos.", why: "La oferta no coincide con lo contratado." },
+    { prio: "Media", campo: "Porcentaje de la comisión SDGC (Anexo D)", a: "Anexo D: '2.10% del promedio histórico…' = $90,000.00.", b: "2.10% × promedio × 18 = $90,720.00.", why: "El porcentaje escrito no reproduce el monto." },
+    { prio: "Media", campo: "Número de contrato citado en el KYC", a: "KYC p.2: '#200000'.", b: "Número de crédito: 1-5019-000.", why: "El formato KYC cita un contrato que no corresponde a este crédito." },
+    { prio: "Baja", campo: "IVA de la comisión SDGC", a: "Calendario: $14,400.16.", b: "16% del Anexo D: $14,400.00.", why: "Centavos por redondeo mensual." } ],
+  dudas: [
+    { doc: "Cotizador / Contrato del procesador", ubic: "Inputs / Anexo B", ve: "Ventas desde 2025-09; contrato con el procesador del 10/10/2026.", duda: "Las ventas históricas se procesaron con otro adquirente.", preg: "¿Con qué procesador se hicieron esas ventas?" },
+    { doc: "Cotizador", ubic: "Inputs", ve: "En 3 de 12 meses el 20% de las ventas no alcanza la mensualidad.", duda: "La retención podría no cubrir meses bajos.", preg: "¿Se considera suficiente la cobertura?" },
+    { doc: "Contrato", ubic: "Domiciliaciones", ve: "Cargo 'en múltiplos de $50,000'.", duda: "El cargo no es múltiplo de esa cantidad.", preg: "¿Es texto del formato que debe ajustarse?" },
+    { doc: "KYC", ubic: "Toda la hoja", ve: "El KYC se leyó con OCR.", duda: "El OCR no distingue firmas ni casillas.", preg: "Revisa que el KYC esté firmado." } ],
+  verificaciones: [
+    { desc: "Suma de capital del calendario = monto del crédito", a: 500000, b: 500000 },
+    { desc: "Suma principal del pagaré = crédito + comisión SDGC con IVA", a: 600000, b: 600000 },
+    { desc: "'Monto del Pagaré' del convenio vs suma principal del pagaré", a: 700000, b: 600000 },
+    { desc: "Intereses del calendario vs recálculo (22% / 360 × días)", a: 98000.12, b: 98000.08 } ],
+  cuentas: [{ uso: "Fideicomiso — cuenta concentradora", banco: "BBVA", clabe: "012180001253239917", cuenta: "0125323991", obs: "Sin observaciones." }],
+  resumen: [] } };
+
+/* ---------- estado ---------- */
+let FILES = [], DOCS = [], GROUPS = [EXAMPLE], running = false, stopFlag = false, downloads;
+const KIND = { contrato: "C", pagare: "P", convenio: "V", kyc: "K", ta: "T", cotizador: "Q", csf: "F", captura: "S" };
+const KIND_NAME = { contrato: "Contrato", pagare: "Pagaré", convenio: "Convenio", kyc: "KYC", ta: "Tabla de amortización", cotizador: "Cotizador", csf: "CSF", captura: "Captura del sistema (Datos Captura)" };
+const LAB = { contrato: "Contrato", pagare: "Pagaré", convenio: "Convenio de adhesión", kyc: "KYC", ta: "Tabla de amortización (Excel)", cotizador: "Cotizador (Excel)", csf: "Constancia de Situación Fiscal", captura: "Captura del sistema (Datos Captura)" };
+
+/* ---------- carga de archivos ---------- */
+const drop = $("#drop");
+["dragenter", "dragover"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => addFiles(e.dataTransfer.files));
+$("#fileInput").addEventListener("change", e => { addFiles(e.target.files); e.target.value = ""; });
+const extOf = n => (n.split(".").pop() || "").toLowerCase();
+function addFiles(list) {
+  for (const f of list) {
+    const ext = extOf(f.name);
+    const kind = ext === "pdf" ? "pdf" : ext === "docx" ? "docx" : ["xlsx", "xls", "xlsm"].includes(ext) ? "excel" : ["jpg", "jpeg", "png", "webp"].includes(ext) ? "image" : "other";
+    if (FILES.some(x => x.file.name === f.name && x.file.size === f.size)) continue;
+    FILES.push({ file: f, kind, meta: kind === "other" ? "Formato no soportado" : (f.size / 1048576).toFixed(1) + " MB" });
+  }
+  drawFiles();
+}
+function drawFiles() {
+  $("#files").innerHTML = FILES.map((x, i) => `<div class="file"><span class="ext">${esc(extOf(x.file.name))}</span><span class="name" title="${esc(x.file.name)}">${esc(x.file.name)}</span><span class="meta">${esc(x.meta)}</span><button class="x" type="button" data-i="${i}" aria-label="Quitar ${esc(x.file.name)}">×</button></div>`).join("");
+  $("#fileCount").textContent = FILES.length + (FILES.length === 1 ? " archivo" : " archivos");
+  $("#runBtn").disabled = !FILES.some(x => x.kind !== "other") || running;
+  $("#clearBtn").hidden = !FILES.length || running;
+}
+$("#files").addEventListener("click", e => { const b = e.target.closest(".x"); if (!b || running) return; FILES.splice(+b.dataset.i, 1); drawFiles(); });
+$("#clearBtn").addEventListener("click", () => { if (running) return; FILES = []; drawFiles(); });
+function log(msg, cls) { const el = $("#log"); const d = document.createElement("div"); if (cls) d.className = cls; d.textContent = msg; el.appendChild(d); el.scrollTop = el.scrollHeight; return d; }
+function showErr(msg) { $("#errBox").textContent = msg; $("#errBox").hidden = false; }
+
+/* ---------- lectura (pdf.js, OCR con tesseract.js publicado junto a la página, SheetJS) ---------- */
+let ocrWorker = null, ocrFailed = false;
+const absUrl = p => new URL(p, location.href).href;
+async function getOcr() {
+  if (ocrWorker || ocrFailed) return ocrWorker;
+  try {
+    if (!window.Tesseract) throw new Error("Tesseract no cargó");
+    // El idioma se publica como .wasm; el "?v=" hace que la ruta que arma tesseract apunte a ese archivo.
+    ocrWorker = await Tesseract.createWorker("spa", 1, { workerPath: absUrl("ocr/worker.min.js"), corePath: absUrl("ocr/core/"), langPath: absUrl("ocr/lang/spa-traineddata.wasm?v="), gzip: true, workerBlobURL: false, cacheMethod: "none" });
+  } catch (e) { console.error(e); ocrFailed = true; ocrWorker = null; }
+  return ocrWorker;
+}
+async function ocrCanvas(canvas) {
+  const w = await getOcr(); if (!w) return null;
+  const { data } = await w.recognize(canvas);
+  return { items: (data.words || []).map(t => ({ s: t.text, x0: t.bbox.x0, x1: t.bbox.x1, y: (t.bbox.y0 + t.bbox.y1) / 2, h: t.bbox.y1 - t.bbox.y0 })), conf: data.confidence };
+}
+async function renderPdfPage(pg) {
+  const vp = pg.getViewport({ scale: 300 / 72 }); const c = document.createElement("canvas"); c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+  const ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+  await pg.render({ canvasContext: ctx, viewport: vp }).promise; return c;
+}
+async function readPdf(x, line) {
+  const pdf = await pdfjsLib.getDocument({ data: await x.file.arrayBuffer() }).promise; const pages = [];
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const pg = await pdf.getPage(p); const vp = pg.getViewport({ scale: 1 }); const tc = await pg.getTextContent();
+    pages.push({ no: p, source: "pdf", _pg: pg, items: tc.items.filter(i => i.str && i.str.trim()).map(i => ({ s: i.str, x0: i.transform[4], x1: i.transform[4] + i.width, y: vp.height - i.transform[5], h: i.height || Math.abs(i.transform[3]) })) });
+  }
+  const doc = { type: "pdf", name: x.file.name, pages };
+  const letters = p => (p.items.map(i => i.s).join("").match(/[A-Za-zÁÉÍÓÚÑáéíóúñ]/g) || []).length;
+  const snapPages = pages.map(p => letters(p) >= 40 ? { no: p.no, t: CruceEngine.buildLines({ ...p, _lines: null }).map(l => l.text) } : { no: p.no, scan: true });
+  const need = CruceEngine.needsOcr(doc); const done = [];
+  for (const n of need) {
+    if (stopFlag) throw { code: "cancelled" };
+    line.textContent = `${x.file.name}: OCR página ${n} (${done.length + 1} de ${need.length})…`;
+    const cv = await renderPdfPage(pages[n - 1]._pg);
+    const r = await ocrCanvas(cv);
+    if (r) { pages[n - 1] = { no: n, source: "ocr", items: r.items, conf: r.conf, _pg: pages[n - 1]._pg }; done.push(n); if (snapPages[n - 1].scan) snapPages[n - 1].words = CruceVersiones.ocrWords(r.items, cv.width, cv.height); }
+  }
+  // documentos cortos (KYC, pagaré, convenio): también se guarda la imagen de cada página para ver casillas y firmas
+  if (pages.length <= 15) snapPages.forEach(sp => { sp.scan = true; });
+  for (const sp of snapPages) if (sp.scan) {
+    if (stopFlag) throw { code: "cancelled" };
+    line.textContent = `${x.file.name}: preparando la comparación de versiones (p. ${sp.no})…`;
+    try { sp.img = await CruceVersiones.renderThumb(pages[sp.no - 1]._pg); } catch (e) { console.error(e); }
+    delete sp.scan;
+  }
+  doc.snap = { name: x.file.name, hash: x.hash, pages: snapPages };
+  pages.forEach(p => { delete p._pg; });
+  doc.quality = !need.length ? "texto digital" : done.length === pages.length ? "escaneo leído con OCR" : done.length ? `texto digital + OCR en p. ${done.join(", ")}` : `páginas ${need.join(", ")} sin texto (OCR no disponible)`;
+  try { await pdf.destroy(); } catch {}
+  return doc;
+}
+async function readImage(x, line) {
+  // las capturas de pantalla pequeñas se amplían para que el OCR lea bien los números
+  const bmp = await createImageBitmap(x.file); const scale = Math.min(Math.max(1, 3200 / bmp.width), 5000 / Math.max(bmp.width, bmp.height));
+  const c = document.createElement("canvas"); c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
+  const ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height); ctx.imageSmoothingQuality = "high"; ctx.drawImage(bmp, 0, 0, c.width, c.height);
+  line.textContent = `${x.file.name}: OCR…`;
+  const r = await ocrCanvas(c);
+  const snap = { name: x.file.name, hash: x.hash, pages: [{ no: 1, img: CruceVersiones.canvasToThumb(c), words: r ? CruceVersiones.ocrWords(r.items, c.width, c.height) : [] }] };
+  return { type: "pdf", name: x.file.name, snap, pages: r ? [{ no: 1, source: "ocr", items: r.items, conf: r.conf }] : [{ no: 1, source: "pdf", items: [] }], quality: r ? "foto leída con OCR" : "OCR no disponible" };
+}
+async function readDocx(x) {
+  // Word: se extrae el texto (párrafos y tablas) de word/document.xml con JSZip
+  const z = await JSZip.loadAsync(await x.file.arrayBuffer());
+  const f = z.file("word/document.xml"); if (!f) throw new Error("El archivo Word no tiene contenido legible.");
+  const pages = CruceEngine.docxToPages(await f.async("string"));
+  const snap = { name: x.file.name, hash: x.hash, pages: pages.map(p => ({ no: p.no, t: CruceEngine.buildLines({ ...p, _lines: null }).map(l => l.text) })) };
+  return { type: "pdf", name: x.file.name, pages, snap, quality: "Word" };
+}
+async function readExcel(x) { const wb = XLSX.read(await x.file.arrayBuffer(), { cellFormula: true, cellDates: true }); return { type: "excel", name: x.file.name, wb, snap: { name: x.file.name, hash: x.hash, cells: CruceVersiones.excelCells(wb) }, quality: "Excel" }; }
+
+/* ---------- proceso del lote ---------- */
+$("#stopBtn").addEventListener("click", () => { stopFlag = true; });
+$("#runBtn").addEventListener("click", async () => {
+  if (running) return;
+  $("#errBox").hidden = true; $("#log").innerHTML = ""; $("#progress").hidden = false;
+  running = true; stopFlag = false; drawFiles(); $("#stopBtn").hidden = false; $("#runBtn").disabled = true;
+  const todo = FILES.filter(x => x.kind !== "other"); DOCS = [];
+  const bar = $("#barFill"); let k = 0;
+  try {
+    for (const x of todo) {
+      if (stopFlag) throw { code: "cancelled" };
+      const line = log(`${x.file.name}: leyendo…`);
+      try {
+        x.hash = await CruceVersiones.hash(await x.file.arrayBuffer());
+        const doc = x.kind === "pdf" ? await readPdf(x, line) : x.kind === "image" ? await readImage(x, line) : x.kind === "docx" ? await readDocx(x) : await readExcel(x);
+        doc.mtime = x.file.lastModified || 0; doc.order = k;
+        CruceEngine.process(doc); DOCS.push(doc);
+        line.textContent = `${x.file.name}: ${LAB[doc.kind] || "no reconocido"} · ${doc.quality || ""}`;
+        if (!LAB[doc.kind]) line.className = "err";
+      } catch (e) { if (e && e.code === "cancelled") throw e; console.error(e); line.textContent = `${x.file.name}: no se pudo leer (${e && e.message ? e.message : "archivo dañado o protegido"})`; line.className = "err"; }
+      k++; bar.style.width = Math.round(k / todo.length * 100) + "%";
+    }
+    const groups = CruceEngine.groupDocs(DOCS);
+    GROUPS = groups.map((docs, i) => splitVersions({ id: "g" + Date.now() + i, docs, report: null }));
+    GROUPS.forEach(crossGroup);
+    GROUPS.sort((a, b) => (b.docs.length - a.docs.length));
+    const vline = log("Comparando con versiones anteriores…");
+    let nv = 0; for (const g of GROUPS) { if (await versionGroup(g)) nv++; }
+    vline.textContent = nv ? `${nv} expediente${nv === 1 ? "" : "s"} con versión anterior: ver "Cambios vs versión anterior".` : "Sin versiones anteriores de estos expedientes en este navegador.";
+    log(`Listo: ${DOCS.length} documentos en ${GROUPS.length} expediente${GROUPS.length === 1 ? "" : "s"}.`);
+  } catch (e) {
+    if (e && e.code === "cancelled") log("Revisión detenida.", "err"); else { console.error(e); showErr("La revisión se interrumpió: " + (e && e.message ? e.message : e)); }
+    if (DOCS.length) { GROUPS = CruceEngine.groupDocs(DOCS).map((docs, i) => ({ id: "g" + Date.now() + i, docs })); GROUPS.forEach(crossGroup); }
+  } finally {
+    running = false; $("#stopBtn").hidden = true; drawFiles(); render();
+    if (ocrFailed) showErr("El OCR no se pudo cargar en esta ventana: las páginas escaneadas (KYC, firmas del procesador) quedaron sin leer y aparecen como dudas.");
+  }
+});
+/* ---------- versiones ---------- */
+const MAINK = ["contrato", "pagare", "convenio", "kyc", "ta", "cotizador", "csf", "captura"];
+function splitVersions(g) {
+  // si en el mismo lote vienen dos archivos del mismo tipo para un expediente, el más reciente es la versión nueva
+  g.prevDocs = [];
+  for (const k of MAINK) {
+    const list = g.docs.filter(d => d.kind === k); if (list.length < 2) continue;
+    list.sort((a, b) => (a.mtime - b.mtime) || (a.order - b.order));
+    const old = list.slice(0, -1); g.prevDocs.push(...old); g.docs = g.docs.filter(d => !old.includes(d));
+  }
+  return g;
+}
+const fmtFecha = iso => { const d = new Date(iso); return isNaN(d) ? String(iso) : String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0") + "/" + d.getFullYear() + " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); };
+function expKeys(docs) {
+  const ks = []; docs.forEach(d => { const k = CruceEngine.docKeys(d); if (k.credito) ks.push("cred:" + k.credito); if (k.id) ks.push("id:" + k.id); });
+  return [...new Set(ks)];
+}
+const snapOf = docs => docs.filter(d => d.snap && MAINK.includes(d.kind)).map(d => ({ kind: d.kind, ...d.snap }));
+async function versionGroup(g) {
+  if (g.example || g.failed || !g.report) return false;
+  try {
+    const cur = { fecha: new Date().toISOString(), expediente: g.report.expediente, docs: snapOf(g.docs), disc: (g.report.discrepancias || []).map(d => ({ prio: d.prio, campo: d.campo })), dudas: (g.report.dudas || []).length };
+    const keys = expKeys(g.docs);
+    let prev = null;
+    if (g.prevDocs && g.prevDocs.length) {
+      const set = [...g.prevDocs, ...g.docs.filter(d => !g.prevDocs.some(p => p.kind === d.kind))];
+      let rp = null; try { rp = CruceEngine.cross(set, { now: new Date() }); } catch (e) { console.error(e); }
+      prev = { fecha: "mismo lote", origen: "archivos más antiguos del mismo lote: " + g.prevDocs.map(d => d.name).join(", "), docs: snapOf(set), disc: rp ? rp.discrepancias.map(d => ({ prio: d.prio, campo: d.campo })) : null, dudas: rp ? rp.dudas.length : null };
+    } else if (keys.length) {
+      const sig = CruceVersiones.sig(cur);
+      const hit = (await CruceVersiones.listVersions(keys)).find(v => CruceVersiones.sig(v.snap) !== sig);
+      if (hit) prev = { ...hit.snap, fecha: fmtFecha(hit.fecha), origen: "revisión guardada en este navegador" };
+    }
+    if (prev) g.report.cambios = await CruceVersiones.compare(prev, cur, LAB);
+    if (keys.length && await CruceVersiones.saveVersion(keys, cur)) $("#forgetBtn").hidden = false;
+    return !!prev;
+  } catch (e) { console.error(e); return false; }
+}
+$("#forgetBtn").addEventListener("click", async () => { if (await CruceVersiones.clearAll()) { $("#forgetBtn").hidden = true; log("Se borraron las versiones guardadas en este navegador."); $("#progress").hidden = false; } });
+CruceVersiones.count().then(n => { if (n) $("#forgetBtn").hidden = false; });
+function fechasHtml(r) {
+  const IF = r.inventarioFechas || []; if (!IF.length) return "";
+  const cls = e => /No coincide|Revisar/.test(e) ? "pill p-alta" : /Coincide/.test(e) ? "pill p-ok" : "pill p-baja";
+  const rows = IF.map((f, i) => `<tr><td>${i + 1}</td><td>${esc(f.doc)}</td><td>${esc(String(f.pagina || ""))}</td><td>${esc(f.apartado)}</td><td><b>${esc(f.texto)}</b></td><td>${esc(f.tipo)}</td><td><span class="${cls(f.estado)}">${esc(f.estado)}</span></td></tr>`).join("");
+  const nB = IF.filter(f => f.estado === "No coincide con la firma").length;
+  return `<details style="margin-top:10px"><summary><b>Inventario de fechas</b> \u00b7 ${IF.length} fechas en los documentos \u00b7 ${nB ? nB + " no coinciden con la firma" : "todas las del grupo B coinciden con la firma"}</summary>
+    <p class="small" style="margin:8px 0">Grupo A = fecha del contrato con el procesador (Anexo B, Anexo A del convenio y notificaci\u00f3n), deben coincidir entre s\u00ed. Grupo B = todas las dem\u00e1s fechas de contrato, pagar\u00e9, convenio y KYC, deben ser la fecha de firma. Las informativas (calendario, vencimiento, fideicomiso, constituci\u00f3n, poderes) no se comparan.</p>
+    <div class="tbl-wrap"><table><thead><tr><th>#</th><th>Documento</th><th>P\u00e1g.</th><th>Apartado</th><th>Fecha</th><th>Tipo</th><th>Estado</th></tr></thead><tbody>${rows}</tbody></table></div></details>`;
+}
+function cambiosHtml(cb) {
+  if (!cb) return "";
+  const arch = cb.archivos.map(a => `<tr><td>${esc(a.doc)}</td><td>${esc(a.estado)}</td><td class="small">${esc(a.antes)}</td><td class="small">${esc(a.despues)}</td></tr>`).join("");
+  const ef = [...cb.disc.resueltas.map(d => `<span class="res">Resuelta · ${esc(d.campo)}</span>`), ...cb.disc.nuevas.map(d => `<span class="nue">Nueva (${esc(d.prio)}) · ${esc(d.campo)}</span>`), ...cb.disc.siguen.map(d => `<span>Sigue (${esc(d.prio)}) · ${esc(d.campo)}</span>`)].join("");
+  const side = (lb, txt, img) => `<div><span class="lb">${lb}</span>${img ? `<img src="${img}" alt="${lb}">` : ""}${txt && txt !== "Ver imagen" ? `<span class="txt">${esc(txt)}</span>` : ""}</div>`;
+  const det = cb.detalles.map(d => `<div class="chg-item"><span class="u"><b>${esc(d.doc)}</b> · ${esc(d.ubic)}</span><div class="chg-ab">${side("Antes", d.antes, d.imgA)}${side("Después", d.despues, d.imgB)}</div></div>`).join("") || `<p class="small" style="margin:0">El contenido no cambió.</p>`;
+  return `<div style="display:grid;gap:10px"><h3>Cambios vs versión anterior</h3>
+    <p class="small" style="margin:0">Comparado contra: ${esc(cb.previa.fecha)} (${esc(cb.previa.origen)}). Dudas: ${cb.dudas.antes ?? "—"} → ${cb.dudas.despues}.</p>
+    <div class="tbl-wrap"><table><thead><tr><th>Documento</th><th>Estado</th><th>Archivo anterior</th><th>Archivo nuevo</th></tr></thead><tbody>${arch}</tbody></table></div>
+    ${ef ? `<div class="ef">${ef}</div>` : ""}
+    <div class="chg">${det}</div></div>`;
+}
+function crossGroup(g) {
+  try { g.report = CruceEngine.cross(g.docs, { now: new Date() }); }
+  catch (e) { console.error(e); g.report = { expediente: g.docs.map(d => d.name).join(", "), conclusion: "No se pudo cruzar este grupo: " + (e.message || e), discrepancias: [], dudas: [], verificaciones: [], cuentas: [], resumen: [], documentos: g.docs.map(d => ({ nombre: d.name, tipo: LAB[d.kind] || "No reconocido" })), faltantes: [] }; g.failed = true; }
+}
+
+/* ---------- vista ---------- */
+const counts = r => { const c = { Alta: 0, Media: 0, Baja: 0 }; (r.discrepancias || []).forEach(d => c[d.prio]++); return c; };
+const kindsOf = g => g.example ? ["contrato", "pagare", "convenio", "kyc", "ta", "cotizador"] : g.docs.map(d => d.kind);
+function render() {
+  const real = GROUPS.filter(g => !g.example);
+  $("#exNote").hidden = !!real.length;
+  $("#resCount").textContent = real.length ? `${real.length} expediente${real.length === 1 ? "" : "s"}` : "";
+  $("#zipBtn").disabled = !real.length;
+  $("#sumBody").innerHTML = GROUPS.map((g, i) => {
+    const r = g.report, c = counts(r), ks = kindsOf(g);
+    const chips = Object.entries(KIND).map(([k, l]) => `<span class="dchip ${ks.includes(k) ? "on" : ""}" title="${esc(KIND_NAME[k])}${ks.includes(k) ? "" : " (no recibido)"}">${l}</span>`).join("");
+    const n = (v, cls) => v ? `<span class="pill ${cls}">${v}</span>` : `<span class="zero">0</span>`;
+    return `<tr class="sum-row" data-i="${i}"><td><span class="exp-name">${esc(r.expediente)}</span>${g.example ? ' <span class="ex-tag">Ejemplo</span>' : ""}${r.cambios ? '<span class="tag-v">Nueva versión</span>' : ""}</td><td><div class="docs">${chips}</div></td><td class="num">${n(c.Alta, "p-alta")}</td><td class="num">${n(c.Media, "p-media")}</td><td class="num">${n(c.Baja, "p-baja")}</td><td class="num">${n((r.dudas || []).length, "p-unk")}</td><td><button class="btn sm xl" type="button" data-i="${i}" ${g.example || g.failed ? "disabled" : ""}>Excel</button></td></tr>`;
+  }).join("");
+  $("#details").innerHTML = GROUPS.map((g, i) => detailHtml(g, i)).join("");
+  // mensaje de "expediente validado" para cada expediente revisado
+  $("#valid").innerHTML = real.filter(g => g.report && g.report.validacion && !g.failed).map(g => { const v = g.report.validacion; return `<div class="vcard ${v.nivel}"><span class="ic" aria-hidden="true">✓</span><div><b>${esc(v.titulo)}</b><span>${esc(g.report.expediente)} · ${esc(v.detalle)}</span></div></div>`; }).join("");
+}
+function detailHtml(g, i) {
+  const r = g.report, c = counts(r);
+  const disc = (r.discrepancias || []).map(d => `<div class="d ${d.prio.toLowerCase()}"><span class="pill p-${d.prio.toLowerCase()}">${esc(d.prio)}</span><span class="t">${esc(d.campo)}</span><div class="ab"><div>${esc(d.a)}</div><div><span>vs.</span> ${esc(d.b)}</div></div><div class="why">${esc(d.why)}</div></div>`).join("") || `<p class="small" style="margin:0">Las reglas no encontraron discrepancias.</p>`;
+  const dud = (r.dudas || []).map(d => `<li><b>${esc(d.preg)}</b><br><span class="small">${esc(d.doc)} · ${esc(d.ubic)} — ${esc(d.ve)} ${esc(d.duda)}</span></li>`).join("") || `<li class="small">Sin dudas registradas.</li>`;
+  const ver = (r.verificaciones || []).map(v => { const dif = Math.round((v.a - v.b) * 100) / 100; const st = Math.abs(dif) < 0.005 ? '<span class="ok">Cuadra</span>' : Math.abs(dif) < 1 ? '<span class="rd">Redondeo</span>' : '<span class="no">No cuadra</span>'; return `<tr><td>${esc(v.desc)}</td><td class="num">${fmt$(v.a)}</td><td class="num">${fmt$(v.b)}</td><td class="num">${fmt$(dif)}</td><td>${st}</td></tr>`; }).join("");
+  const cta = (r.cuentas || []).map(a => `<tr><td>${esc(a.uso)}</td><td>${esc(a.banco || "")}</td><td class="mono">${esc(a.clabe)}</td><td class="mono">${esc(a.cuenta || "")}</td><td>${esc(a.obs)}</td></tr>`).join("");
+  const others = GROUPS.map((o, j) => ({ o, j })).filter(({ o, j }) => j !== i && !o.example);
+  const files = g.example ? (r.documentos || []).map(d => `<tr><td>${esc(d.nombre)}</td><td>${esc(d.tipo)}</td><td></td><td></td></tr>`).join("") : g.docs.map((d, k) => `<tr><td>${esc(d.name)}</td><td>${esc(LAB[d.kind] || "No reconocido")}</td><td class="small">${esc(d.quality || "")}</td><td><label class="small" style="display:flex;gap:6px;align-items:center">Mover a <select class="move" id="mv-${esc(g.id)}-${k}" data-g="${i}" data-d="${k}"><option value="">—</option>${others.map(({ o, j }) => `<option value="${j}">${esc(String(o.report.expediente).slice(0, 60))}</option>`).join("")}<option value="new">Expediente nuevo</option></select></label></td></tr>`).join("");
+  return `<details class="exp" id="exp-${i}"><summary><span class="grow"><span class="exp-name">${esc(r.expediente)}</span>${g.example ? ' <span class="ex-tag">Ejemplo</span>' : ""}</span><span class="pill p-alta">${c.Alta} alta</span><span class="pill p-media">${c.Media} media</span><span class="pill p-baja">${c.Baja} baja</span><span class="pill p-unk">${(r.dudas || []).length} dudas</span></summary>
+  <div class="exp-body">
+    ${r.validacion && !g.example ? `<div class="vcard ${r.validacion.nivel}"><span class="ic" aria-hidden="true">✓</span><div><b>${esc(r.validacion.titulo)}</b><span>${esc(r.validacion.detalle)}</span></div></div>` : ""}
+    <p class="concl">${esc(r.conclusion)}</p>
+    ${fechasHtml(r)}
+    ${cambiosHtml(r.cambios)}
+    ${(r.faltantes || []).length ? `<p class="small" style="margin:0">No recibidos: ${esc(r.faltantes.join("; "))}.</p>` : ""}
+    <div style="display:grid;gap:10px"><h3>Discrepancias</h3><div class="disc">${disc}</div></div>
+    <div style="display:grid;gap:10px"><h3>Dudas y no confirmados</h3><ol class="dudas">${dud}</ol></div>
+    ${ver ? `<div style="display:grid;gap:10px"><h3>Verificaciones aritméticas</h3><div class="tbl-wrap"><table><thead><tr><th>Verificación</th><th class="num">Valor A</th><th class="num">Valor B</th><th class="num">Diferencia</th><th>Resultado</th></tr></thead><tbody>${ver}</tbody></table></div></div>` : ""}
+    ${cta ? `<div style="display:grid;gap:10px"><h3>Cuentas bancarias</h3><div class="tbl-wrap"><table><thead><tr><th>Uso</th><th>Banco</th><th>CLABE</th><th>Cuenta</th><th>Observaciones</th></tr></thead><tbody>${cta}</tbody></table></div></div>` : ""}
+    <div style="display:grid;gap:10px"><h3>Archivos de este expediente</h3><div class="tbl-wrap"><table><thead><tr><th>Archivo</th><th>Documento</th><th>Lectura</th><th>${g.example ? "" : "Agrupación"}</th></tr></thead><tbody>${files}</tbody></table></div>
+    ${g.example ? "" : `<p class="small" style="margin:0">Si un archivo quedó en el expediente equivocado, muévelo; el cruce de ambos se recalcula sin volver a leer los archivos.</p>`}</div>
+    <div class="row"><button class="btn primary xl" type="button" data-i="${i}" ${g.example || g.failed ? "disabled" : ""}>Descargar Excel de este expediente</button></div>
+  </div></details>`;
+}
+$("#sumBody").addEventListener("click", e => {
+  if (e.target.closest(".xl")) return;
+  const tr = e.target.closest(".sum-row"); if (!tr) return;
+  const d = document.getElementById("exp-" + tr.dataset.i); if (d) { d.open = true; d.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" }); }
+});
+document.addEventListener("click", e => { const b = e.target.closest(".xl"); if (b && !b.disabled) downloadOne(+b.dataset.i, b); });
+$("#details").addEventListener("change", e => {
+  const s = e.target.closest(".move"); if (!s || !s.value) return;
+  const gi = +s.dataset.g, di = +s.dataset.d; const src = GROUPS[gi]; const doc = src.docs[di];
+  src.docs.splice(di, 1);
+  let dst; if (s.value === "new") { dst = { id: "g" + Date.now(), docs: [] }; GROUPS.push(dst); } else dst = GROUPS[+s.value];
+  dst.docs.push(doc); crossGroup(dst);
+  if (src.docs.length) crossGroup(src); else GROUPS.splice(gi, 1);
+  render();
+  Promise.all([versionGroup(dst), src.docs.length ? versionGroup(src) : null]).then(render);
+});
+
+/* ---------- Excel ---------- */
+const hoy = () => { const d = new Date(); return String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0") + "/" + d.getFullYear(); };
+async function getDownloads() { if (downloads !== undefined) return downloads; try { downloads = window.claude ? await window.claude.use("downloads") : null; } catch { downloads = null; } return downloads; }
+async function workbookBuffer(g) { const wb = CruceExcel.build(ExcelJS, g.report, { revisado: hoy() }); return await wb.xlsx.writeBuffer(); }
+async function save(filename, blob) {
+  const dl = await getDownloads();
+  if (!dl) {
+    // fuera de claude.ai (otro sitio o archivo local): descarga normal del navegador
+    try { const u = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = u; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 60000); }
+    catch (e) { showErr("No se pudo descargar el archivo en esta vista."); }
+    return;
+  }
+  try { await dl.save({ filename, data: blob }); }
+  catch (e) { if (!(e && e.code === "declined")) showErr("No se pudo descargar el archivo" + (e && e.code ? " (" + e.code + ")" : "") + "."); }
+}
+async function downloadOne(i, btn) {
+  const g = GROUPS[i]; if (!g || g.example) return;
+  const old = btn.textContent; btn.disabled = true; btn.textContent = "Generando…";
+  try { const buf = await workbookBuffer(g); await save(CruceExcel.fileName(g.report), new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })); }
+  catch (e) { console.error(e); showErr("No se pudo generar el Excel: " + (e.message || e)); }
+  finally { btn.disabled = false; btn.textContent = old; }
+}
+$("#zipBtn").addEventListener("click", async () => {
+  const real = GROUPS.filter(g => !g.example && !g.failed); if (!real.length) return;
+  const b = $("#zipBtn"); b.disabled = true; b.textContent = "Generando…";
+  try {
+    const zip = new JSZip(); const used = {};
+    for (const g of real) { let n = CruceExcel.fileName(g.report); if (used[n]) n = n.replace(/\.xlsx$/, "_" + (++used[n]) + ".xlsx"); else used[n] = 1; zip.file(n, await workbookBuffer(g)); }
+    const d = new Date(); const blob = await zip.generateAsync({ type: "blob" });
+    await save(`Cruces_expedientes_${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}.zip`, blob);
+  } catch (e) { console.error(e); showErr("No se pudo generar el ZIP: " + (e.message || e)); }
+  finally { b.disabled = false; b.textContent = "Descargar todos (.zip)"; }
+});
+
+render();
+</script>
+
+</body></html>
