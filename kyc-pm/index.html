@@ -153,7 +153,7 @@ section.sec{background:var(--surface);border:1px solid var(--line);border-radius
 </style>
 
 <header class="top"><div class="top-in wrap">
-  <div class="brand"><b>KYC Persona Moral</b><span>Sofimex · Fiduciario · plantilla con datos fijos · versión 16/11/2026 20:50</span></div>
+  <div class="brand"><b>KYC Persona Moral</b><span>Sofimex · Fiduciario · plantilla con datos fijos · versión 16/11/2026 21:00</span></div>
   <div class="exp"><label for="expName">Expediente</label><input id="expName" placeholder="Ej. NOMBRE DE LA EMPRESA F/0394" autocomplete="off"></div>
   <div class="meter" title="Campos editables con valor"><div class="bar"><i id="barFill"></i></div><span id="meterTxt">0 / 0</span><small>editables</small></div>
   <div class="actions">
@@ -1197,7 +1197,7 @@ function parseCSF(text){
 
 /* --- Excel PLANTILLA --- */
 const DOM_FIELDS = [
-  ['CALLE', ['CALLE']], ['NÚM EXTERIOR', ['NUM EXTERIOR','NUMERO EXTERIOR','NO EXTERIOR','NUM EXT','EXTERIOR']],
+  ['CALLE', ['CALLE','CALLE Y NUMERO','DOMICILIO CALLE Y NUMERO']], ['NÚM EXTERIOR', ['NUM EXTERIOR','NUMERO EXTERIOR','NO EXTERIOR','NUM EXT','EXTERIOR']],
   ['NÚM INTERIOR', ['NUM INTERIOR','NUMERO INTERIOR','NO INTERIOR','NUM INT','INTERIOR']], ['COLONIA', ['COLONIA']],
   ['C POSTAL', ['C POSTAL','CODIGO POSTAL','CP','C P']], ['ALCALDÍA O MUNICIPIO', ['ALCALDIA O MUNICIPIO','MUNICIPIO','ALCALDIA','MUNICIPIO O ALCALDIA']],
   ['CIUDAD O POBLACIÓN', ['CIUDAD O POBLACION','CIUDAD','POBLACION']], ['ENTIDAD FEDERATIVA', ['ENTIDAD FEDERATIVA','ENTIDAD','ESTADO']],
@@ -1206,6 +1206,7 @@ const DOM_FIELDS = [
 const ROW_FIELDS = [
   ['CARGO QUE DESEMPEÑA EN LA EMPRESA', ['CARGO QUE DESEMPENA EN LA EMPRESA','CARGO']],
   ['NOMBRE Y NÚMERO  DE LA IDENTIFICACIÓN  AUTORIDAD QUE LA EMITE_2', ['NOMBRE Y NUMERO DE LA IDENTIFICACION AUTORIDAD QUE LA EMITE CONYUGE','IDENTIFICACION CONYUGE','NOMBRE Y NUMERO DE LA IDENTIFICACION AUTORIDAD QUE LA EMITE']],
+  ['NOMBRE COMPLETO DEL CÓNYUGE CONCUBINA O CONCUBINARIO', ['NOMBRE COMPLETO DEL CONYUGE CONCUBINA O CONCUBINARIO','NOMBRE COMPLETO DEL CONYUGE','NOMBRE DEL CONYUGE','CONYUGE']],
   ['OFICINA 1', ['OFICINA 1']], ['CELULAR', ['CELULAR']], ['PAGINA WEB', ['PAGINA WEB']], ['OFICINA 2', ['OFICINA 2']],
   ['CORREO ELECTRÓNICO_2', ['CORREO ELECTRONICO','CORREO']], ['PERSONA DE CONTACTO', ['PERSONA DE CONTACTO']],
 ];
@@ -1214,72 +1215,84 @@ function labelMatch(cell, cands, exact){
   const k = LK(cell); if (!k) return false;
   return cands.some(c => k === c || (!exact && (k.startsWith(c + ' ') || k === c.replace(/ /g, ''))));
 }
-function valueRight(row, c, datosCol){
-  if (datosCol >= 0 && datosCol > c && String(row[datosCol] ?? '').trim()) return String(row[datosCol]).trim();
-  for (let j = c + 1; j < row.length; j++){ const v = String(row[j] ?? '').trim(); if (v) return v; }
+// Valor de un rótulo: en la tabla CAMPOS/DATOS, la celda de DATOS; en los bloques de domicilio, la siguiente celda con dato
+// a la derecha sin salirse del bloque (la hoja trae tablas lado a lado: domicilios a la izquierda y CAMPOS/DATOS a la derecha)
+const DOM_ALL = () => DOM_FIELDS.flatMap(f => f[1]);
+function valueRight(row, c, {datosCol = -1, limit = Infinity} = {}){
+  if (datosCol >= 0 && datosCol > c && c < limit) return String(row[datosCol] ?? '').trim();
+  for (let j = c + 1; j < Math.min(row.length, limit); j++){
+    const v = String(row[j] ?? '').trim(); if (!v) continue;
+    if (labelMatch(v, DOM_ALL(), true) || /^DOMICILIO/.test(LK(v))) return '';
+    return v;
+  }
   return '';
 }
-function findRow(rows, cands, {from = 0, to = rows.length, datosCol = -1, exact = false, reject = null} = {}){
+function findRow(rows, cands, {from = 0, to = rows.length, colFrom = 0, colTo = Infinity, datosCol = -1, limit = Infinity, exact = false, reject = null} = {}){
   for (let i = from; i < Math.min(to, rows.length); i++){
     const row = rows[i];
-    for (let c = 0; c < row.length; c++){
-      if (datosCol >= 0 && c >= datosCol) break;
+    for (let c = colFrom; c < Math.min(row.length, colTo); c++){
       if (reject && reject.test(LK(row[c]))) continue;
-      if (labelMatch(row[c], cands, exact)) { const v = valueRight(row, c, datosCol); if (v) return {v, i}; }
+      if (labelMatch(row[c], cands, exact)) { const v = valueRight(row, c, {datosCol, limit}); if (v) return {v, i}; }
     }
   }
   return null;
 }
 function parsePlantilla(wb){
   const out = []; const notes = [];
-  const put = (key, v, ev) => { if (v && BYKEY[key]) out.push({id: BYKEY[key].id, valor: v, evidencia: ev}); };
+  const put = (key, v, ev) => { if (v && BYKEY[key] && !out.some(o => o.id === BYKEY[key].id)) out.push({id: BYKEY[key].id, valor: v, evidencia: ev}); };
   const names = wb.SheetNames;
-  const kycName = names.find(n => /KYC/i.test(n)) || names[0];
-  const order = [kycName, ...names.filter(n => n !== kycName)];
-  for (const sn of order){
-    const rows = sheetRows(wb.Sheets[sn]); const isKyc = sn === kycName;
-    let datosCol = -1;
-    for (const row of rows){ const c = row.findIndex(x => LK(x) === 'DATOS'); if (c >= 0){ datosCol = c; break; } }
-    const opt = {datosCol};
-    if (isKyc){
-      // Bloques de domicilio
-      const idxF = rows.findIndex(r => r.some(x => /DOMICILIO PERSONA MORAL FISCAL/.test(LK(x))));
-      const idxM = rows.findIndex(r => r.some(x => /DOMICILIO PERSONA MORAL/.test(LK(x)) && !/FISCAL/.test(LK(x))));
-      const blocks = [[idxM, '', 'DOMICILIO PERSONA MORAL'], [idxF, '_2', 'DOMICILIO PERSONA MORAL FISCAL']].filter(b => b[0] >= 0);
-      for (const [start, suf, nom] of blocks){
-        const other = blocks.map(b => b[0]).filter(x => x > start);
-        const end = Math.min(other.length ? Math.min(...other) : rows.length, start + 25);
-        for (const [key, cands] of DOM_FIELDS){
-          const k = key === 'ALCALDÍA O MUNICIPIO' && suf ? 'ALCALDÍA O MUNICIPIO_2' : key === 'ESTADO 2' ? 'ESTADO 2' + suf : key === 'PROVINCIA 2' ? 'PROVINCIA 2' + suf : key + suf;
-          if (!BYKEY[k]) continue;
-          const exact = key === 'ENTIDAD FEDERATIVA' || key === 'PROVINCIA 2';
-          const r = findRow(rows, cands, {...opt, from: start + 1, to: end, exact, reject: key === 'ENTIDAD FEDERATIVA' ? /ESTADO 2/ : null});
-          if (r) put(k, r.v, `PLANTILLA › ${nom} › ${cands[0]}`);
-        }
-        // Núm. interior (III): si no viene en su renglón, número final de la calle o el que sigue a No./Núm./#/N°
-        if (!suf && !out.some(o => o.id === BYKEY['NÚM INTERIOR'].id)){
-          const calle = out.find(o => o.id === BYKEY['CALLE'].id);
-          if (calle){
-            const m = calle.valor.match(/(?:\bNo\.?|\bN[uú]m\.?|#|N[°º])\s*([0-9]+[\w\-]*(?:\s?[A-Z]\b)?)/i) || calle.valor.match(/(\d+(?:\s?-\s?\d+|\s?-?\s?[A-Z]\b)?|S\/N)\s*$/i);
-            if (m) put('NÚM INTERIOR', m[1].toUpperCase(), 'PLANTILLA › calle › número final');
-          }
-        }
-      }
-      const yr = findRow(rows, ['ANOS DE RESIDENCIA','ANOS RESIDENCIA'], opt);
-      if (yr){ put('AÑOS RESIDENCIA', yr.v, 'PLANTILLA › AÑOS DE RESIDENCIA'); put('AÑOS RESIDENCIA_2', yr.v, 'PLANTILLA › AÑOS DE RESIDENCIA'); }
-      for (const [key, cands] of ROW_FIELDS){
-        const r = findRow(rows, cands, {...opt, exact: key === 'CELULAR' || key === 'CORREO ELECTRÓNICO_2'});
-        if (r) put(key, r.v, `PLANTILLA › ${cands[0]}`);
-      }
-      const ida = findRow(rows, ['ID ANTICIPA'], opt);
-      if (ida && FINES) put(FINES.key, ida.v, 'PLANTILLA › ID ANTICIPA');
-    }
-    // Cotizador en celdas (cualquier hoja)
-    const once = (key, cands, exact, ev, reject) => { if (out.some(o => o.id === BYKEY[key].id)) return; const r = findRow(rows, cands, {datosCol: isKyc ? datosCol : -1, exact, reject}); if (r && /\d/.test(r.v)) put(key, r.v, `${sn} › ${ev}`); };
-    once('VALOR_3', ['VP','VALOR PAGARE'], true, 'VP / Valor Pagaré');
-    once('MONTO DE LA OPERACIÓNCONTRATO', ['MONTO'], true, 'Monto', /SGDC|COMISION/);
-    once('MONTO APROXIMADO DE MOVIMIENTOS MENSUALES', ['VENTAS MENSUALES'], true, 'Ventas mensuales', /MESES/);
+  // Solo la hoja PLATILLA-KYC / PLANTILLA-KYC; si no existe, la primera que diga KYC o la primera hoja
+  const kycName = names.find(n => /^PLAN?TILLA ?KYC$/.test(LK(n))) || names.find(n => /PLAN?TILLA.*KYC/.test(LK(n))) || names.find(n => /KYC/.test(LK(n))) || names[0];
+  if (names.length > 1) notes.push(`Solo se leyó la hoja ${kycName}`);
+  const rows = sheetRows(wb.Sheets[kycName]);
+  // Tabla CAMPOS / DATOS
+  let datosCol = -1, hdrRow = -1, campCol = -1;
+  for (let i = 0; i < rows.length && datosCol < 0; i++){ const c = rows[i].findIndex(x => LK(x) === 'DATOS'); if (c >= 0){ datosCol = c; hdrRow = i; } }
+  if (datosCol >= 0){
+    campCol = rows[hdrRow].findIndex((x, j) => j < datosCol && /^(CAMPOS?|CONCEPTOS?|RUBROS?|DATO SOLICITADO)$/.test(LK(x)));
+    if (campCol < 0) campCol = datosCol - 1;
   }
+  const T = {datosCol, colFrom: campCol >= 0 ? campCol : 0, colTo: datosCol >= 0 ? datosCol : Infinity};
+  // Bloques de domicilio
+  const blockAt = re => { for (let i = 0; i < rows.length; i++){ const c = rows[i].findIndex(x => re(LK(x))); if (c >= 0) return [i, c]; } return null; };
+  const bM = blockAt(s => /DOMICILIO PERSONA MORAL/.test(s) && !/FISCAL/.test(s));
+  const bF = blockAt(s => /DOMICILIO PERSONA MORAL FISCAL/.test(s));
+  const blocks = [[bM, '', 'DOMICILIO PERSONA MORAL'], [bF, '_2', 'DOMICILIO PERSONA MORAL FISCAL']].filter(b => b[0]);
+  for (const [[start, hc], suf, nom] of blocks){
+    const otherStarts = blocks.map(b => b[0][0]).filter(x => x > start);
+    const end = Math.min(otherStarts.length ? Math.min(...otherStarts) : rows.length, start + 25);
+    // Columnas del bloque: desde la del encabezado hasta antes de la tabla CAMPOS/DATOS (si está a la derecha)
+    const limit = campCol > hc ? campCol : Infinity;
+    for (const [key, cands] of DOM_FIELDS){
+      const k = key === 'ALCALDÍA O MUNICIPIO' && suf ? 'ALCALDÍA O MUNICIPIO_2' : key === 'ESTADO 2' ? 'ESTADO 2' + suf : key === 'PROVINCIA 2' ? 'PROVINCIA 2' + suf : key + suf;
+      if (!BYKEY[k]) continue;
+      const exact = key === 'ENTIDAD FEDERATIVA' || key === 'PROVINCIA 2' || key === 'ESTADO 2';
+      const r = findRow(rows, cands, {from: start + 1, to: end, colFrom: Math.max(0, hc - 1), colTo: limit, limit, exact, reject: key === 'ENTIDAD FEDERATIVA' ? /ESTADO 2/ : null});
+      if (r) put(k, r.v, `PLANTILLA › ${nom} › ${cands[0]}`);
+    }
+    // Núm. interior (III): si no viene en su renglón, número final de la calle o el que sigue a No./Núm./#/N°
+    if (!suf && !out.some(o => o.id === BYKEY['NÚM INTERIOR'].id)){
+      const calle = out.find(o => o.id === BYKEY['CALLE'].id);
+      if (calle){
+        const m = calle.valor.match(/(?:\bNo\.?|\bN[uú]m\.?|#|N[°º])\s*([0-9]+[\w\-]*(?:\s?[A-Z]\b)?)/i) || calle.valor.match(/(\d+(?:\s?-\s?\d+|\s?-?\s?[A-Z]\b)?|S\/N)\s*$/i);
+        if (m) put('NÚM INTERIOR', m[1].toUpperCase(), 'PLANTILLA › calle › número final');
+      }
+    }
+  }
+  // Tabla CAMPOS / DATOS (renglón por rótulo, valor en DATOS)
+  const yr = findRow(rows, ['ANOS DE RESIDENCIA','ANOS RESIDENCIA'], T) || findRow(rows, ['ANOS DE RESIDENCIA','ANOS RESIDENCIA']);
+  if (yr){ put('AÑOS RESIDENCIA', yr.v, 'PLANTILLA › AÑOS DE RESIDENCIA'); put('AÑOS RESIDENCIA_2', yr.v, 'PLANTILLA › AÑOS DE RESIDENCIA'); }
+  for (const [key, cands] of ROW_FIELDS){
+    const r = findRow(rows, cands, {...T, exact: key === 'CELULAR' || key === 'CORREO ELECTRÓNICO_2'});
+    if (r) put(key, r.v, `PLANTILLA › ${cands[0]} (columna DATOS)`);
+  }
+  const ida = findRow(rows, ['ID ANTICIPA'], T) || findRow(rows, ['ID ANTICIPA']);
+  if (ida && FINES) put(FINES.key, ida.v, 'PLANTILLA › ID ANTICIPA');
+  // Cotizador en celdas (misma hoja)
+  const once = (key, cands, ev, reject) => { const r = findRow(rows, cands, {...T, exact: true, reject}) || findRow(rows, cands, {exact: true, reject}); if (r && /\d/.test(r.v)) put(key, r.v, `PLANTILLA › ${ev}`); };
+  once('VALOR_3', ['VP','VALOR PAGARE'], 'VP / Valor Pagaré');
+  once('MONTO DE LA OPERACIÓNCONTRATO', ['MONTO'], 'Monto', /SGDC|COMISION/);
+  once('MONTO APROXIMADO DE MOVIMIENTOS MENSUALES', ['VENTAS MENSUALES'], 'Ventas mensuales', /MESES/);
   return {campos: out, notes};
 }
 
@@ -1328,7 +1341,10 @@ function parseAnalyzer(t){
   }
   const fn = U.match(/NACIMIENTO\s*:?\s*(\d{1,2}\s*(?:DE\s+)?[A-Z]+\s*(?:DE\s+)?\d{4})/) || U.match(/(\d{1,2}\s+(?:ENERO|FEBRERO|MARZO|ABRIL|MAYO|JUNIO|JULIO|AGOSTO|SEPTIEMBRE|OCTUBRE|NOVIEMBRE|DICIEMBRE)\s+\d{4})/);
   if (fn) put('FECHA DE NACIMIENTO', toDate(fn[1]), 'Fecha de nacimiento');
-  return {campos: out, nombre};
+  const etiq = {'RFC CON HOMOCLAVE':'RFC','CURP':'CURP','FECHA DE NACIMIENTO':'fecha de nacimiento','NÚMERO CELULAR':'teléfono','CORREO ELECTRÓNICO':'correo','ESTADO CIVIL ADJUNTAR ACTA DE MATRIMONIO':'estado civil','RÉGIMEN CONYUGAL':'régimen'};
+  const got = new Set(out.map(o => CAT.find(d => d.id === o.id).key));
+  const faltan = Object.entries(etiq).filter(([k]) => !got.has(k)).map(([, v]) => v);
+  return {campos: out, nombre, faltan};
 }
 const MONEY_RE = /\$?\s?\d{1,3}(?:[,\s]\d{3})+(?:\.\d+)?|\$\s?\d+(?:\.\d+)?|\b\d{4,}(?:\.\d+)?\b/g;
 const moneyNum = s => { const n = parseFloat(String(s).replace(/[^\d.]/g, '')); return isNaN(n) ? null : n; };
@@ -1397,7 +1413,7 @@ async function localRead(file, setMsg){
     const kind = classifyImg(t);
     if (kind === 'capital' || kind === 'cotizador' || kind === 'admin') t = await ocrText(blob, p => setMsg(`Leyendo la tabla de ${label}… ${Math.round(p * 100)}%`), '6');
     else if (kind === 'analyzer') t = await ocrText(blob, p => setMsg(`Leyendo la pantalla de Analyzer… ${Math.round(p * 100)}%`));
-    if (kind === 'analyzer'){ const a = parseAnalyzer(t); res.campos.push(...a.campos); obs.push(`Pantalla de Analyzer${a.nombre ? ' de ' + a.nombre : ' (no se leyó el nombre)'}`); }
+    if (kind === 'analyzer'){ const a = parseAnalyzer(t); res.campos.push(...a.campos); obs.push(`Pantalla de Analyzer${a.nombre ? ' de ' + a.nombre : ' (no se leyó el nombre)'}` + (a.faltan.length ? ` · no se pudo leer: ${a.faltan.join(', ')}` : '')); }
     else if (kind === 'admin'){ const a = parseAdmin(t); res.campos.push(...a.campos); obs.push(`Administración de la sociedad: ${a.n} integrante(s)` + (a.n > ADM.length ? ` (el formato solo tiene ${ADM.length} renglones)` : '')); }
     else if (kind === 'capital'){ const c = parseCapital(t); res.campos.push(...c.campos); obs.push(`Capital social: ${c.n} accionista(s)` + (c.n > CAP_SLOTS.length ? ` (el formato solo tiene ${CAP_SLOTS.length} renglones)` : '')); }
     else if (kind === 'cotizador'){ res.campos.push(...parseCotizador(t)); obs.push('Cotizador'); }
@@ -1449,7 +1465,7 @@ async function localRead(file, setMsg){
     const buf = await file.arrayBuffer();
     const wb = XLSX.read(buf, {type: 'array', cellDates: false});
     res.tipo_documento = 'PLANTILLA EXCEL';
-    const p = parsePlantilla(wb); res.campos.push(...p.campos);
+    const p = parsePlantilla(wb); res.campos.push(...p.campos); obs.push(...p.notes);
     if (!['csv', 'tsv', 'xls'].includes(ext)){
       const zip = await JSZip.loadAsync(buf);
       const media = Object.keys(zip.files).filter(f => /^xl\/media\/.+\.(png|jpe?g|gif|bmp|webp)$/i.test(f)).sort();
