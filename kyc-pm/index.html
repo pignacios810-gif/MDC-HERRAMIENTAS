@@ -92,6 +92,19 @@ aside{display:flex;flex-direction:column;gap:14px;min-width:0}
 @media (prefers-reduced-motion:reduce){.spin{animation:none}.bar i{transition:none}}
 .linkbtn{background:none;border:0;padding:0;color:var(--accent);cursor:pointer;font-size:12px;text-decoration:underline}
 .legend{display:grid;gap:6px;font-size:12.5px}
+.guide{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.guide li{display:flex;flex-direction:column;gap:3px;min-width:0}
+.guide .gh{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.guide .gh b{font-size:13px}
+.guide .gh small{font-weight:400;color:var(--muted);font-size:11.5px;margin-left:4px}
+.guide .gd{font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.guide ul{list-style:none;margin:4px 0 0;padding:0 0 0 12px;border-left:2px solid var(--line);display:flex;flex-direction:column;gap:6px}
+.guide ul .gh b{font-weight:500}
+.pill{font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;border-radius:4px;padding:2px 7px;white-space:nowrap;flex:none}
+.pill.ok{background:var(--auto-soft);color:var(--auto)}
+.pill.no{background:var(--err-soft);color:var(--err)}
+.pill.op{background:var(--sunk);color:var(--muted)}
+.guide-sep{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-top:4px}
 .legend div{display:flex;gap:8px;align-items:center}
 main{min-width:0;display:flex;flex-direction:column;gap:14px}
 .toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
@@ -164,6 +177,10 @@ section.sec{background:var(--surface);border:1px solid var(--line);border-radius
       </div>
       <input type="file" id="fileInput" class="hidden-input" multiple tabindex="-1">
       <div id="aiNotice" class="notice" hidden style="margin-top:10px"></div>
+    </div>
+    <div class="panel" id="guidePanel">
+      <h2>Qué documentos subir</h2>
+      <ul class="guide" id="guide"></ul>
     </div>
     <div class="panel" id="filesPanel" hidden>
       <h2>Leídos</h2>
@@ -577,6 +594,51 @@ function rerow(d){
   finally { rerowing = false; }
   counts();
 }
+/* ---------- guía: qué documentos subir ---------- */
+const anyVal = (...keys) => keys.some(k => { const d = BYKEY[k]; return d && (hasValue(d) && !isFixed(d) || (S.conflicts[d.id]||[]).length); });
+const GUIDE = [
+  { t:'Archivo PDF anexo', tag:'obligatorio', d:'Anexo de datos generales. Llena I. Datos generales (razón social, fecha de constitución, RFC, escritura, notario, folio mercantil), II. Representante legal y poder (Referencia 3) y el número de identificación (Referencia 4. Obligado Solidario (1)).',
+    ok: () => anyVal('DENOMINACIÓN O RAZÓN SOCIAL','NOMBRE  DEL REPRESENTANTE O REPRESENTANTRES LEGALES') },
+  { t:'Excel PLANTILLA', tag:'obligatorio', d:'Hoja PLATILLA-KYC, columna DATOS: cargo del RL, INE del cónyuge, domicilio (III) y domicilio fiscal (III.1), años de residencia, contacto, ID ANTICIPA, VP, Monto y Ventas mensuales.',
+    ok: () => anyVal('CALLE','CALLE_2','OFICINA 1','CARGO QUE DESEMPEÑA EN LA EMPRESA') || (FINES && hasValue(FINES)),
+    sub: [
+      { t:'Pantalla de Analyzer', d:'RFC, CURP, fecha de nacimiento, teléfono, correo, estado civil y régimen del representante. Solo se usa si el nombre es igual al del RL.', ok: () => anyVal('CURP','RFC CON HOMOCLAVE','ESTADO CIVIL ADJUNTAR ACTA DE MATRIMONIO') },
+      { t:'Capital Fijo y/o Capital Consolidado', d:'VII. Composición del capital social: un renglón por accionista.', ok: () => hasValue(capF('Nombre TB', 0)) },
+      { t:'Administración de la sociedad', d:'VIII. Sociedad administrada por: integrante y tipo de administración.', ok: () => hasValue(ADM[0][0]) },
+      { t:'Cotizador', d:'Monto, Ventas mensuales y VP, si no vienen en celdas.', ok: () => anyVal('MONTO DE LA OPERACIÓNCONTRATO','VALOR_3') },
+    ] },
+  { t:'CSF de la empresa', tag:'opcional', d:'Giro mercantil y sector económico (actividad de mayor porcentaje).', ok: () => anyVal('GIRO MERCANTIL ACTIVIDAD U OBJETO SOCIAL') },
+];
+let guideSig = '';
+function renderGuide(){
+  const ul = document.getElementById('guide'); if (!ul) return;
+  const pend = faltantes();
+  const st = g => g.ok() ? 'ok' : (g.tag === 'opcional' ? 'op' : 'no');
+  const sig = JSON.stringify([GUIDE.map(g => [st(g), (g.sub||[]).map(st)]), pend.map(d => d.id)]);
+  if (sig === guideSig) return; guideSig = sig;
+  const pill = (s, txt) => el('span', {class:'pill ' + s, text: txt || (s === 'ok' ? 'Leído' : s === 'op' ? 'Opcional' : 'Falta')});
+  ul.textContent = '';
+  for (const g of GUIDE){
+    const li = el('li', {}, el('div', {class:'gh'}, el('b', {}, g.t, el('small', {text: g.tag ? '· ' + g.tag : ''})), pill(st(g))), el('div', {class:'gd', text: g.d}));
+    if (g.sub){
+      li.append(el('div', {class:'gd', style:'margin-top:4px', text:'Imágenes pegadas en el Excel (o súbelas sueltas en JPG/PNG):'}));
+      const sub = el('ul');
+      for (const x of g.sub) sub.append(el('li', {}, el('div', {class:'gh'}, el('b', {text: x.t}), pill(st(x), st(x) === 'ok' ? 'Leído' : 'Falta')), el('div', {class:'gd', text: x.d})));
+      li.append(sub);
+    }
+    ul.append(li);
+  }
+  ul.append(el('li', {}, el('div', {class:'guide-sep', text:'Lo capturas tú antes de descargar'})));
+  const manual = [
+    [FECHA, 'Fecha del formato'], [BYID['PM-047'], 'Comprobante del domicilio (III)'], [BYID['PM-060'], 'Comprobante del domicilio fiscal (III.1)'],
+    [NUMINT, 'Confirmar núm. interior (III)'], [NUMINT2, 'Confirmar núm. interior fiscal (III.1)'],
+  ];
+  for (const [d, t] of manual){
+    const ok = !pend.includes(d);
+    ul.append(el('li', {}, el('div', {class:'gh'}, el('button', {class:'linkbtn', type:'button', text: t, onclick: () => goField(d)}), pill(ok ? 'ok' : 'no', ok ? 'Listo' : 'Falta'))));
+  }
+  ul.append(el('li', {}, el('div', {class:'gd', text:'Al descargar te preguntará si el RL y el aval son la misma persona. Clase y Serie (VII) quedan como campo pendiente.'})));
+}
 function counts(){
   const ed = CAT.filter(d => !isFixed(d) && !d.l2);
   const filled = ed.filter(hasValue).length;
@@ -589,6 +651,7 @@ function counts(){
   $('#cConf').textContent = c('conf');
   $('#cFixed').textContent = CAT.filter(d => d.fixed!==undefined).length;
   scheduleDoc();
+  renderGuide();
   const ok = faltantes().length === 0;
   for (const id of ['btnPdf','btnXlsx']){
     const b = document.getElementById(id); if (!b || b.textContent === 'Generando…') continue;
