@@ -153,7 +153,7 @@ section.sec{background:var(--surface);border:1px solid var(--line);border-radius
 </style>
 
 <header class="top"><div class="top-in wrap">
-  <div class="brand"><b>KYC Persona Moral</b><span>Sofimex · Fiduciario · plantilla con datos fijos · versión 16/11/2026 20:30</span></div>
+  <div class="brand"><b>KYC Persona Moral</b><span>Sofimex · Fiduciario · plantilla con datos fijos · versión 16/11/2026 20:45</span></div>
   <div class="exp"><label for="expName">Expediente</label><input id="expName" placeholder="Ej. NOMBRE DE LA EMPRESA F/0394" autocomplete="off"></div>
   <div class="meter" title="Campos editables con valor"><div class="bar"><i id="barFill"></i></div><span id="meterTxt">0 / 0</span><small>editables</small></div>
   <div class="actions">
@@ -939,7 +939,9 @@ RESPUESTA: solo un objeto JSON, sin texto adicional, con esta forma:
 /* ---------- cola ---------- */
 let queue = Promise.resolve();
 function addFiles(list){
-  const files = [...list];
+  // Primero los PDF (anexo, CSF), luego Word/Excel y al final las imágenes: lo rápido no espera al OCR
+  const prio = f => /\.pdf$/i.test(f.name) ? 0 : /\.(docx?|txt|csv)$/i.test(f.name) ? 1 : /\.(xlsx|xlsm|xls|ods)$/i.test(f.name) ? 2 : 3;
+  const files = [...list].sort((a, b) => prio(a) - prio(b));
   if (!files.length) return;
   // Sin Claude: empieza a descargar el OCR de una vez, mientras se leen los textos
   if (!sample && files.some(f => !/\.(csv|txt|json|docx)$/i.test(f.name))) { try { ocrWorker().catch(() => {}); } catch(_){} }
@@ -1028,7 +1030,8 @@ function toDate(v){
 const ESTADOS = ['AGUASCALIENTES','BAJA CALIFORNIA SUR','BAJA CALIFORNIA','CAMPECHE','COAHUILA','COLIMA','CHIAPAS','CHIHUAHUA','CIUDAD DE MEXICO','DISTRITO FEDERAL','DURANGO','GUANAJUATO','GUERRERO','HIDALGO','JALISCO','ESTADO DE MEXICO','MEXICO','MICHOACAN','MORELOS','NAYARIT','NUEVO LEON','OAXACA','PUEBLA','QUERETARO','QUINTANA ROO','SAN LUIS POTOSI','SINALOA','SONORA','TABASCO','TAMAULIPAS','TLAXCALA','VERACRUZ','YUCATAN','ZACATECAS','CDMX'];
 function soloEstado(v){
   const s = LN(v);
-  const hit = ESTADOS.find(e => new RegExp('\\b' + e + '\\b').test(s));
+  let hit = ESTADOS.find(e => new RegExp('\\b' + e + '\\b').test(s));
+  if (!hit){ const w = new Set(s.replace(/[^A-Z ]/g, ' ').split(/\s+/)); hit = ESTADOS.filter(e => e.split(' ').every(x => w.has(x))).sort((a, b) => b.length - a.length)[0]; }
   if (hit) return hit === 'CDMX' ? 'CIUDAD DE MEXICO' : hit;
   return s.replace(/\d+/g, ' ').replace(/\b(NOTARIA|NOTARIO|PUBLICA|PUBLICO|NUM|NUMERO|NO|DEL|DE|ESTADO|LA|EL|Y|EN|FECHA)\b/g, ' ').replace(/[^A-Z ]/g, ' ').replace(/\s+/g, ' ').trim();
 }
@@ -1081,7 +1084,8 @@ function parseAnexo(text){
   const r3 = sectionRange(lines, /Referencia\s*3\b/i, /Referencia\s*[4-9]\b/i);
   const r4 = sectionRange(lines, /Referencia\s*4\b/i, /Referencia\s*(?:[5-9]|4\s*\.?\s*Obligado\s*Solidario\s*\(2\))/i);
   const companyTo = r3 ? r3[0] : lines.length;
-  const C = (label, o = {}) => findLabel(lines, label, {to: companyTo, stops: stopsF, ...o});
+  const r2i = lines.findIndex(l => /Referencia\s*2\b/i.test(l));
+  const C = (label, o = {}) => findLabel(lines, label, {from: r2i >= 0 ? r2i : 0, to: companyTo, stops: stopsF, ...o});
   const R3 = (label, o = {}) => r3 ? findLabel(lines, label, {from: r3[0], to: r3[1], stops: stopsF, ...o}) : '';
   const out = [];
   const put = (key, v, ev) => { if (v && BYKEY[key]) out.push({id: BYKEY[key].id, valor: v, evidencia: ev}); };
@@ -1110,6 +1114,66 @@ function parseAnexo(text){
   }
   if (r4){
     const ni = findLabel(lines, 'Número de Identificación', {from: r4[0], to: r4[1], stops: stopsF});
+    if (ni) put('NOMBRE Y NÚMERO  DE LA IDENTIFICACIÓN  AUTORIDAD QUE LA EMITE', 'INE - ' + ni.replace(/^INE\s*-?\s*/i, ''), 'Anexo › Referencia 4. Obligado Solidario (1) › Número de Identificación');
+  }
+  return out;
+}
+
+/* --- ANEXO por posición (rótulo arriba, valor abajo en la misma columna) --- */
+function anexoItems(tcItems, page){
+  return tcItems.map(it => ({ s: String(it.str || '').replace(/[\u200b\u200c\u200d\ufeff]/g, '').replace(/\s+/g, ' ').trim(), x: it.transform[4], y: it.transform[5], w: it.width || 0, p: page }))
+    .filter(o => o.s);
+}
+const isLbl = o => /:\s*$/.test(o.s) || /^Referencia\s*\d/i.test(o.s);
+const ordK = o => o.p * 100000 + (5000 - o.y);
+function parseAnexoPos(items){
+  items = items.slice().sort((a, b) => ordK(a) - ordK(b) || a.x - b.x);
+  const out = [];
+  const put = (key, v, ev) => { if (v && BYKEY[key] && !out.some(o => o.id === BYKEY[key].id)) out.push({id: BYKEY[key].id, valor: v, evidencia: ev}); };
+  const refs = items.filter(o => /^Referencia\s*\d/i.test(o.s)).map(o => ({n: +(o.s.match(/\d+/)[0]), k: ordK(o), s: o.s}));
+  const sec = n => { const i = refs.findIndex(r => r.n === n); if (i < 0) return null; return [refs[i].k, i + 1 < refs.length ? refs[i + 1].k : Infinity]; };
+  const inSec = (o, r) => r && ordK(o) > r[0] && ordK(o) < r[1];
+  const valueOf = (lab) => {
+    const row = items.filter(o => o.p === lab.p && Math.abs(o.y - lab.y) < 3);
+    const nextX = Math.min(...row.filter(o => o !== lab && o.x > lab.x + 2 && isLbl(o)).map(o => o.x), Infinity);
+    // 1) mismo renglón, a la derecha del rótulo
+    const same = row.filter(o => o !== lab && !isLbl(o) && o.x > lab.x + 2 && o.x < nextX - 1).map(o => o.s).join(' ').trim();
+    if (same) return same;
+    // 2) debajo, en la misma columna, hasta el siguiente renglón de rótulos
+    const below = items.filter(o => o.p === lab.p && o.y < lab.y - 2 && isLbl(o) && o.y > lab.y - 120);
+    const stopY = below.length ? Math.max(...below.map(o => o.y)) : lab.y - 60;
+    const vals = items.filter(o => o.p === lab.p && !isLbl(o) && o.y < lab.y - 2 && o.y > stopY + 1 && o.x >= lab.x - 4 && o.x < nextX - 2);
+    vals.sort((a, b) => b.y - a.y || a.x - b.x);
+    return vals.map(o => o.s).join(' ').replace(/\s+/g, ' ').trim();
+  };
+  const find = (re, r) => { const lab = items.find(o => isLbl(o) && re.test(o.s) && (!r || inSec(o, r))); return lab ? valueOf(lab) : ''; };
+  const L = s => labelRe(s);
+  const fed = /^(?:\d+(?:\.\d+)*\s*)?Fedatario\s*:/i;
+  const r2 = sec(2) || [-Infinity, (sec(3) || [Infinity])[0]], r3 = sec(3), r4 = sec(4);
+  put('DENOMINACIÓN O RAZÓN SOCIAL', find(L('Razón Social'), r2), 'Anexo › Referencia 2 › Razón Social');
+  const fc = find(L('Fecha de constitución'), r2);
+  put('FECHA DE CONSTITUCIÓN', fc && toDate(fc), 'Anexo › Referencia 2 › Fecha de constitución');
+  put('FECHA DE ESCRITURA', fc && toDate(fc), 'Anexo › Referencia 2 › Fecha de constitución');
+  const rfc = (LN(find(L('RFC'), r2)).replace(/\s/g, '').match(/[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}/) || [''])[0];
+  put('RFC CON HOMOCLAVE O NÚMERO DE IDENTIFICACIÓN FISCAL 2', rfc, 'Anexo › Referencia 2 › RFC');
+  put('NÚMERO DE ACTA CONSTITUTIVA', find(L('Número de escritura o folio constitutivo'), r2) || find(L('Número de Escritura'), r2), 'Anexo › Referencia 2 › Número de escritura o folio constitutivo');
+  put('NOMBRE DEL NOTARIO', find(fed, r2), 'Anexo › Referencia 2 › Fedatario');
+  put('NÚMERO DEL FEDATARIO PÚBLICO Y ENTIDAD FEDERATIVA', find(L('Número de Fedatario y Estado'), r2), 'Anexo › Referencia 2 › Número de Fedatario y Estado');
+  put('NÚMERO DE FOLIO DE INSCRIPCIÓN EN EL RPP Y C', find(L('Folio Mercantil Electrónico'), r2), 'Anexo › Referencia 2 › Folio Mercantil Electrónico');
+  if (r3){
+    put('NOMBRE  DEL REPRESENTANTE O REPRESENTANTRES LEGALES', find(L('Nombre(s) completo(s)'), r3), 'Anexo › Referencia 3 › Nombre(s) completo(s)');
+    put('NÚMERO DE ESCRITURA PÚBLICA', find(L('Número de escritura o folio constitutivo'), r3), 'Anexo › Referencia 3 › Número de escritura o folio constitutivo');
+    const f3 = find(L('Fecha de constitución'), r3) || find(L('Fecha de la escritura'), r3);
+    put('DE FECHA', f3 && toDate(f3), 'Anexo › Referencia 3 › Fecha de la escritura');
+    put('ANTE EL FEDATARIO PÚBLICO', find(fed, r3), 'Anexo › Referencia 3 › Fedatario');
+    const nf = find(L('Número de Fedatario y Estado'), r3);
+    put('CON NÚMERO', nf && soloNumero(nf), 'Anexo › Referencia 3 › Número de Fedatario y Estado (solo el número)');
+    put('DE LA CIUDAD DE', nf && soloEstado(nf), 'Anexo › Referencia 3 › Número de Fedatario y Estado (solo el estado)');
+    const rpp = find(L('Lugar y Fecha de inscripción al RPP'), r3);
+    put('INSCRIPCION EN EL RPC', rpp && soloEstado(rpp), 'Anexo › Referencia 3 › Lugar y Fecha de inscripción al RPP (solo el estado)');
+  }
+  if (r4){
+    const ni = find(L('Número de Identificación'), r4);
     if (ni) put('NOMBRE Y NÚMERO  DE LA IDENTIFICACIÓN  AUTORIDAD QUE LA EMITE', 'INE - ' + ni.replace(/^INE\s*-?\s*/i, ''), 'Anexo › Referencia 4. Obligado Solidario (1) › Número de Identificación');
   }
   return out;
@@ -1349,13 +1413,14 @@ async function localRead(file, setMsg){
     setMsg('Abriendo el PDF…');
     const pdf = await pdfjsLib.getDocument({data: buf}).promise;
     const n = Math.min(pdf.numPages, 40);
-    const pages = []; const scanned = [];
+    const pages = []; const scanned = []; const posItems = [];
     for (let i = 1; i <= n; i++){
       setMsg(`Leyendo texto, página ${i} de ${n}…`);
       const pg = await pdf.getPage(i); const tc = await pg.getTextContent();
       let t = ''; let lastY = null;
       for (const it of tc.items){ const y = it.transform ? Math.round(it.transform[5]) : null; if (lastY !== null && y !== lastY) t += '\n'; else if (t) t += ' '; t += it.str; lastY = y; }
       pages[i] = t.replace(/[ \t]+/g, ' ').trim();
+      posItems.push(...anexoItems(tc.items, i));
       if (pages[i].replace(/\s/g, '').length < 40) scanned.push(i);
     }
     const anexoListo = txt => { const r = parseAnexo(txt); return r.some(c => c.id === BYKEY['NOMBRE Y NÚMERO  DE LA IDENTIFICACIÓN  AUTORIDAD QUE LA EMITE'].id) && r.length >= 12; };
@@ -1373,7 +1438,13 @@ async function localRead(file, setMsg){
     }
     obs.push(`${n} página(s)` + (scanned.length ? `, ${scanned.length} escaneada(s); OCR en ${ocrHechas}` : ', todas con texto'));
     if (/CONSTANCIA DE SITUACION FISCAL/.test(LK(full))){ res.tipo_documento = 'CSF'; res.campos.push(...parseCSF(full)); }
-    else { res.tipo_documento = 'ARCHIVO PDF ANEXO'; res.campos.push(...parseAnexo(full)); }
+    else {
+      res.tipo_documento = 'ARCHIVO PDF ANEXO';
+      // Primero por posición (columnas); lo que falte, por renglón de texto (anexos escaneados o con "Rótulo: valor")
+      const pos = posItems.length ? parseAnexoPos(posItems) : [];
+      const txt = parseAnexo(full).filter(c => !pos.some(p => p.id === c.id));
+      res.campos.push(...pos, ...txt);
+    }
   } else if (SHEET_EXT.includes(ext)){
     const buf = await file.arrayBuffer();
     const wb = XLSX.read(buf, {type: 'array', cellDates: false});
