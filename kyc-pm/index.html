@@ -153,7 +153,7 @@ section.sec{background:var(--surface);border:1px solid var(--line);border-radius
 </style>
 
 <header class="top"><div class="top-in wrap">
-  <div class="brand"><b>KYC Persona Moral</b><span>Sofimex · Fiduciario · plantilla con datos fijos · versión 16/11/2026 21:00</span></div>
+  <div class="brand"><b>KYC Persona Moral</b><span>Sofimex · Fiduciario · plantilla con datos fijos · versión 16/11/2026 21:10</span></div>
   <div class="exp"><label for="expName">Expediente</label><input id="expName" placeholder="Ej. NOMBRE DE LA EMPRESA F/0394" autocomplete="off"></div>
   <div class="meter" title="Campos editables con valor"><div class="bar"><i id="barFill"></i></div><span id="meterTxt">0 / 0</span><small>editables</small></div>
   <div class="actions">
@@ -386,6 +386,25 @@ function socioRfcPorNombre(nombre){
     if (hasValue(n) && hasValue(r) && sameName(cur(n), nombre)) return cur(r);
   }
   return '';
+}
+// IX. Estructura corporativa: copia nombre y puesto de cada renglón de VIII (salvo que lo hayas corregido a mano)
+const EST = [['NOMBRE COMPLETO','PUESTO O CARGO'],['undefined_26','undefined_30'],['undefined_27','undefined_31'],['undefined_28','undefined_32'],['undefined_29','undefined_33']].map(r => r.map(k => BYKEY[k]));
+EST.forEach(([n, c], i) => {
+  for (const d of [n, c]){ d.tipo = 'Del apartado VIII'; d.rot = 'VIII. Sociedad administrada por, renglón ' + (i + 1); d.resp = ''; d.fromAdmVIII = 1; }
+  n.regla = 'Igual al nombre del administrador / miembro del consejo ' + (i + 1) + ' (VIII)';
+  c.regla = 'Igual al puesto o cargo del consejo ' + (i + 1) + ' (VIII)';
+});
+function deriveEst(){
+  let changed = false;
+  EST.forEach((pair, i) => pair.forEach((d, j) => {
+    if (!d || isFixed(d)) return;
+    const m = S.values[d.id]; if (m && m.manual) return;
+    const src = ADM[i][j]; const v = hasValue(src) ? cur(src) : '';
+    if (v && (!m || m.v !== v)){ S.values[d.id] = { v, src: ['Copiado de VIII (' + src.id + ')'] }; changed = true; }
+    else if (!v && m){ delete S.values[d.id]; changed = true; }
+  }));
+  if (changed) persist();
+  return changed;
 }
 function deriveAdm(){
   let changed = false;
@@ -667,7 +686,7 @@ function manualSet(d, raw){
   persist(); rerow(d);
   if (d.id === REP_ID && resolvePending()) render();
   syncImporte();
-  if (deriveDom() | deriveCap() | deriveAdm()) render();
+  if (deriveDom() | deriveCap() | deriveAdm() | deriveEst()) render();
 }
 function useAlt(d, i){
   const c = S.conflicts[d.id][i];
@@ -737,7 +756,7 @@ function apply(result, srcName){
   const repBefore = cur(BYID[REP_ID]);
   for (const c of (result.campos || [])){
     const d = BYID[String(c.id||'').trim()];
-    if (!d || d.required || d.pend || d.fromRfc || d.fromSocio || d.l2 && d.sec.startsWith('VII.')) continue;
+    if (!d || d.required || d.pend || d.fromRfc || d.fromSocio || d.fromAdmVIII || d.l2 && d.sec.startsWith('VII.')) continue;
     const v = fmt(d, c.valor);
     if (!v) continue;
     const ev = c.evidencia ? String(c.evidencia).slice(0,160) : '';
@@ -767,7 +786,7 @@ function apply(result, srcName){
   persist();
   if (cur(BYID[REP_ID]) !== repBefore || hasValue(BYID[REP_ID])) resolvePending();
   syncImporte();
-  deriveDom(); deriveCap(); deriveAdm();
+  deriveDom(); deriveCap(); deriveAdm(); deriveEst();
   return {applied, conflicts, held: S.pending.length};
 }
 function addConf(d, c){
@@ -889,7 +908,7 @@ function catalogText(){
     let s = `${d.id} | ${d.sec} | ${d.label}`;
     if (d.opts) s += ` | opciones: ${d.opts.map(o=>o[0]).join(' / ')}`;
     if (d.required) return `${d.id} | ${d.sec} | ${d.label} | NO LLENAR (la captura el usuario)`;
-    if (d.pend || d.fromRfc || d.fromSocio || (d.l2 && d.sec.startsWith('VII.'))) return '';
+    if (d.pend || d.fromRfc || d.fromSocio || d.fromAdmVIII || (d.l2 && d.sec.startsWith('VII.'))) return '';
     if (d.tpl) s += ` | texto fijo: "${d.tpl.replace('{N}','[NÚMERO]')}" | devuelve SOLO el número de contrato`;
     else if (isFixed(d)) s += d.fixed ? ` | FIJO: "${d.fixed}"` : ` | FIJO VACÍO (no llenar)`;
     else if (hasValue(d)) s += ` | actual: "${cur(d)}"`;
@@ -1761,7 +1780,7 @@ async function renderDoc(){
 
 async function init(){
   restore();
-  deriveDom(); deriveCap(); deriveAdm();
+  deriveDom(); deriveCap(); deriveAdm(); deriveEst();
   bind();
   if (S.files.length){ $('#filesPanel').hidden = false; S.files.slice().reverse().forEach(it => { if (it.state!=='done' && it.state!=='err'){ it.state='err'; it.msg='Se interrumpió. Vuelve a subir el archivo.'; } $('#fileList').append(fileItem(it)); }); }
   render();
