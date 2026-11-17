@@ -161,7 +161,7 @@ section.sec{background:var(--surface);border:1px solid var(--line);border-radius
 </style>
 
 <header class="top"><div class="top-in wrap">
-  <div class="brand"><b>KYC Persona Moral</b><span>Plantilla con datos fijos · versión 16/11/2026 23:00</span></div>
+  <div class="brand"><b>KYC Persona Moral</b><span>Plantilla con datos fijos · versión 16/11/2026 23:30</span></div>
   <div class="exp"><label for="expName">Expediente</label><input id="expName" placeholder="Ej. NOMBRE DE LA EMPRESA F/0394" autocomplete="off"></div>
   <div class="meter" title="Campos editables con valor"><div class="bar"><i id="barFill"></i></div><span id="meterTxt">0 / 0</span><small>editables</small></div>
   <div class="actions">
@@ -517,8 +517,8 @@ function fmt(d, v){
     return m ? m[1].padStart(2,'0') + '/' + m[2].padStart(2,'0') + '/' + m[3] : v;
   }
   if (MONEY.has(d.key)){
-    const num = parseFloat(v.replace(/[^0-9.\-]/g,''));
-    if (!isNaN(num)) return '$' + Math.round(num).toLocaleString('en-US') + '.00';
+    const num = typeof normNum === 'function' ? normNum(v) : parseFloat(v.replace(/[^0-9.\-]/g,''));
+    if (num !== null && !isNaN(num)) return '$' + Math.round(num).toLocaleString('en-US') + '.00';
   }
   if (d.opts){
     const hit = d.opts.find(o => norm(o[0]) === norm(v)) || d.opts.find(o => norm(o[0]).replace(/[^A-Z0-9]/g,'') === norm(v).replace(/[^A-Z0-9]/g,''));
@@ -1065,6 +1065,45 @@ async function ocrWorker(){
   return ocrWorkerP;
 }
 const conLimite = (prom, ms, msg) => Promise.race([prom, new Promise((_, rej) => setTimeout(() => rej(new Error(msg)), ms))]);
+// Amplía la imagen para el OCR (texto chico = errores); fondo blanco y PNG sin pérdida
+async function prepOCR(blob, targetW, {bin = false, cropW = 1} = {}){
+  const bmp = await createImageBitmap(blob);
+  const sw = Math.round(bmp.width * cropW);
+  const k = Math.max(1, Math.min(4, targetW / sw));
+  const c = document.createElement('canvas'); c.width = Math.round(sw * k); c.height = Math.round(bmp.height * k);
+  const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+  g.imageSmoothingQuality = 'high'; g.drawImage(bmp, 0, 0, sw, bmp.height, 0, 0, c.width, c.height);
+  if (bin){
+    // Solo el texto oscuro queda negro; cualquier fondo de color (verde, amarillo…) pasa a blanco
+    const im = g.getImageData(0, 0, c.width, c.height), d = im.data;
+    for (let i = 0; i < d.length; i += 4){ const v = Math.max(d[i], d[i + 1], d[i + 2]) < 130 ? 0 : 255; d[i] = d[i + 1] = d[i + 2] = v; }
+    g.putImageData(im, 0, 0);
+  }
+  const out = await new Promise(r => c.toBlob(r, 'image/png'));
+  out.scale = k; return out;
+}
+// OCR que además devuelve cada renglón con su posición, y el texto rearmado por filas (etiqueta y valor juntos)
+async function ocrLines(blob, onProg, psm = '3'){
+  const w = await conLimite(ocrWorker(), 120000, 'El lector OCR no terminó de cargar en 2 minutos. Revisa la conexión a internet o si tu red bloquea cdn.jsdelivr.net, y vuelve a subir el archivo.');
+  ocrProgress = onProg || null;
+  try {
+    await w.setParameters({tessedit_pageseg_mode: psm, preserve_interword_spaces: '1'});
+    const r = await conLimite(w.recognize(blob, {}, {blocks: true, text: true}), 90000, 'El OCR tardó más de 90 segundos en una sola imagen.');
+    const lines = (r.data.blocks || []).flatMap(b => (b.paragraphs || []).flatMap(p => p.lines || []))
+      .map(l => ({t: (l.text || '').trim(), x0: l.bbox.x0, y0: l.bbox.y0, x1: l.bbox.x1, y1: l.bbox.y1})).filter(l => l.t);
+    // Filas: renglones cuya franja vertical se encima, ordenados de izquierda a derecha
+    const sorted = lines.slice().sort((a, b) => (a.y0 + a.y1) - (b.y0 + b.y1));
+    const rows = [];
+    for (const l of sorted){
+      const cy = (l.y0 + l.y1) / 2;
+      const row = rows.find(rw => cy >= rw.y0 - 2 && cy <= rw.y1 + 2);
+      if (row){ row.items.push(l); row.y0 = Math.min(row.y0, l.y0); row.y1 = Math.max(row.y1, l.y1); }
+      else rows.push({y0: l.y0, y1: l.y1, items: [l]});
+    }
+    const rowsText = rows.map(rw => rw.items.sort((a, b) => a.x0 - b.x0).map(i => i.t).join('   ')).join('\n');
+    return {text: r.data.text || '', lines, rowsText};
+  } finally { ocrProgress = null; }
+}
 async function ocrText(blob, onProg, psm = '3'){
   const w = await conLimite(ocrWorker(), 120000, 'El lector OCR no terminó de cargar en 2 minutos. Revisa la conexión a internet o si tu red bloquea cdn.jsdelivr.net, y vuelve a subir el archivo.');
   ocrProgress = onProg || null;
@@ -1162,6 +1201,27 @@ function curpDeNombre(curp, nombre){
   const p = curp.slice(0, 4);
   return ini(W[W.length - 2], W[W.length - 1], W.slice(0, -2)) === p || ini(W[0], W[1], W.slice(2)) === p;
 }
+
+const AMB = {O:'0',Q:'0',D:'0',U:'0',I:'1',L:'1','|':'1',J:'1',T:'71',Z:'27',S:'58',G:'6',E:'68',B:'8',A:'4'};
+function rfcCands(raw){
+  raw = LN(raw).replace(/[^A-Z0-9&Ñ|]/g, '');
+  if (raw.length !== 13 && raw.length !== 12) return [];
+  const n = raw.length - 9, head = lets(raw.slice(0, n)), mid = raw.slice(n, n + 6), tail = raw.slice(n + 6).replace(/O$/, '0');
+  if (!/^[A-ZÑ&]+$/.test(head)) return [];
+  let opts = [''];
+  for (const ch of mid){ const o = /\d/.test(ch) ? ch : (AMB[ch] || ''); if (!o) return []; opts = opts.flatMap(p => o.split('').map(d => p + d)); }
+  return opts.filter(d => fechaValida(d.slice(0, 2), d.slice(2, 4), d.slice(4, 6))).map(d => head + d + tail);
+}
+function pickRfc(raw, known = []){
+  const c = rfcCands(raw); if (!c.length) return '';
+  const k = c.find(x => known.some(y => y === x || (y.length >= 10 && x.slice(0, 10) === y.slice(0, 10)))); if (k) return k;
+  return c.find(x => /^\d+$/.test(x.slice(x.length - 9, x.length - 3)) && x === LN(raw).replace(/[^A-Z0-9&Ñ]/g, '')) || c[0];
+}
+const conocidos = (campos = []) => {
+  const v = []; for (const d of CAT){ if (/RFC|CURP/.test(d.key) && hasValue(d)) v.push(cur(d)); }
+  for (const c of campos) if (/^[A-ZÑ&]{3,4}\d{6}/.test(String(c.valor || ''))) v.push(String(c.valor));
+  return v;
+};
 
 /* --- texto en renglones --- */
 // Corta el valor en el siguiente rótulo "Algo:" del mismo renglón
@@ -1324,6 +1384,7 @@ const ROW_FIELDS = [
   ['CARGO QUE DESEMPEÑA EN LA EMPRESA', ['CARGO QUE DESEMPENA EN LA EMPRESA','CARGO']],
   ['NOMBRE Y NÚMERO  DE LA IDENTIFICACIÓN  AUTORIDAD QUE LA EMITE_2', ['NOMBRE Y NUMERO DE LA IDENTIFICACION AUTORIDAD QUE LA EMITE CONYUGE','IDENTIFICACION CONYUGE','NOMBRE Y NUMERO DE LA IDENTIFICACION AUTORIDAD QUE LA EMITE']],
   ['NOMBRE COMPLETO DEL CÓNYUGE CONCUBINA O CONCUBINARIO', ['NOMBRE COMPLETO DEL CONYUGE CONCUBINA O CONCUBINARIO','NOMBRE COMPLETO DEL CONYUGE','NOMBRE DEL CONYUGE','CONYUGE']],
+  ['NOMBRE_3', ['NOMBRE DEL EJECUTIVO QUE ENTREVISTA','EJECUTIVO QUE ENTREVISTA']],
   ['OFICINA 1', ['OFICINA 1']], ['CELULAR', ['CELULAR']], ['PAGINA WEB', ['PAGINA WEB']], ['OFICINA 2', ['OFICINA 2']],
   ['CORREO ELECTRÓNICO_2', ['CORREO ELECTRONICO','CORREO']], ['PERSONA DE CONTACTO', ['PERSONA DE CONTACTO']],
 ];
@@ -1417,13 +1478,13 @@ function parsePlantilla(wb){
 function classifyImg(t){
   const s = LK(t);
   if (/INCODE|PUNTUACION|ESTATUS CURP|VIDEO SELFIE|DOCUMENTO PROBATORIO/.test(s)) return 'analyzer';
-  if (/ADMINISTRACION DE LA SOCIEDAD|TIPO DE ADMINISTRACION|\bINTEGRANTE\b/.test(s)) return 'admin';
-  if (/CAPITAL FIJO|CAPITAL CONSOLIDADO|CAPITAL SOCIAL/.test(s)) return 'capital';
-  if (/VENTAS MENSUALES|VALOR PAGARE|SGDC|\bVP\b|COTIZ/.test(s)) return 'cotizador';
+  if (/ADMINISTRACION DE LA SOCIEDAD|TIPO DE ADMINISTRACION|TIPO ADMINISTRACION|\bINTEGRANTE\b|PODERES OTORGADOS|TIPO DE EJECUCION/.test(s)) return 'admin';
+  if (/CAPITAL FIJO|CAPITAL CONSOLIDADO|CAPITAL SOCIAL|NOMBRE O RAZON SOCIAL|VALOR DE LAS ACCIONES|NUMERO DE ACCIONES/.test(s)) return 'capital';
+  if (/VENTAS MENSUALES|VALOR PAGARE|SGDC|\bVP\b|COTIZ|MESES VENTAS|AMORTIZACION MENSUAL/.test(s)) return 'cotizador';
   if (/RFC/.test(s) && /CURP/.test(s) && /ESTADO CIVIL|EMAIL|TELEFONO/.test(s)) return 'analyzer';
   return '';
 }
-function parseAnalyzer(t){
+function parseAnalyzer(t, known = {}){
   const lines = t.split(/\n+/).map(l => l.trim()).filter(Boolean);
   const U = LN(t);
   // Nombre: renglón en mayúsculas cerca del inicio, antes de los IDs de Incode
@@ -1434,8 +1495,23 @@ function parseAnalyzer(t){
   }
   const cond = nombre || '(NOMBRE NO LEÍDO EN LA PANTALLA DE ANALYZER)';
   const out = []; const put = (key, v, ev) => { if (v && BYKEY[key]) out.push({id: BYKEY[key].id, valor: v, evidencia: 'Analyzer › ' + ev, condicion_nombre: cond}); };
-  const curpA = curpOCR(t);
+  const fnA = U.match(/NACIMIENTO\s*:?\s*(\d{1,2}\s*(?:DE\s+)?[A-Z]+\s*(?:DE\s+)?\d{4})/) || U.match(/(\d{1,2}\s+(?:ENERO|FEBRERO|MARZO|ABRIL|MAYO|JUNIO|JULIO|AGOSTO|SEPTIEMBRE|OCTUBRE|NOVIEMBRE|DICIEMBRE)\s+\d{4})/);
+  const fechaA = fnA ? toDate(fnA[1]) : '';
+  const ymd = /^\d{2}\/\d{2}\/\d{4}$/.test(fechaA) ? fechaA.slice(8, 10) + fechaA.slice(3, 5) + fechaA.slice(0, 2) : '';
+  let curpA = curpOCR(t);
   let rfc = rfcOCR(t);
+  if (ymd){
+    // Valor que sigue a "CURP:" / "RFC:" en la misma fila (o el primer código largo que empiece igual)
+    const tok = re => { const m = U.match(re); return m ? m[1].replace(/[^A-Z0-9]/g, '') : ''; };
+    const ct = tok(/CU[RP]{1,2}\s*:?\s*([A-Z0-9|]{14,20})/) || ((U.match(/\b[A-Z]{4}[A-Z0-9|]{4,8}[HM][A-Z]{5}[A-Z0-9]{2}\b/) || [''])[0]);
+    const cm = ct.match(/^([A-Z0-9]{4})[A-Z0-9|]{4,8}?([HM][A-Z0-9]{5})([A-Z0-9]{2})$/);
+    if (cm){ const c2 = lets(cm[1]) + ymd + lets(cm[2]) + cm[3][0] + digs(cm[3][1]); if (/^[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d$/.test(c2)) curpA = fixCurp(c2); }
+    if (curpA && curpA.slice(4, 10) !== ymd) curpA = curpA.slice(0, 4) + ymd + curpA.slice(10);
+    const rt = tok(/R[FE][CG]\s*:?\s*([A-Z0-9|&]{11,15})/) || ((U.match(/\b[A-Z]{4}[A-Z0-9|]{5,7}[A-Z0-9]{3}\b/) || [''])[0]);
+    if (rt && rt.length >= 12){ const ini = lets(rt.slice(0, 4)); const r2 = ini + ymd + rt.slice(-3).replace(/O$/, '0'); if (/^[A-ZÑ&]{4}\d{6}[A-Z0-9]{3}$/.test(r2)) rfc = r2; }
+    if (rfc && rfc.slice(4, 10) !== ymd) rfc = rfc.slice(0, 4) + ymd + rfc.slice(10);
+    if (curpA && rfc && rfc.slice(0, 4) !== curpA.slice(0, 4)) rfc = curpA.slice(0, 4) + rfc.slice(4);
+  }
   if (rfc && curpA && rfc.slice(0, 10) !== curpA.slice(0, 10)){
     // La CURP y el RFC comparten los primeros 10 caracteres: si difieren por un error del OCR, manda la CURP
     const alt = rfcOCR(t, false);
@@ -1446,11 +1522,25 @@ function parseAnalyzer(t){
   put('CURP', curpA, 'CURP');
   if (curpA) out.forEach(o => { o.curp_ref = curpA; });
   let mail = (t.match(/[\w.+\-]+@[\w\-]+\.[\w.\-]+/) || [])[0];
+  if (!mail){
+    const plano = t.toLowerCase().replace(/\s+/g, '');
+    mail = (known.emails || []).find(e => { const [a, b] = e.toLowerCase().split('@'); return a && b && new RegExp(a.replace(/[.+\-]/g, '\\$&') + '.?' + b.replace(/[.+\-]/g, '\\$&')).test(plano); }) || '';
+  }
   if (!mail){ const m = t.match(/([\w.+\-]{2,})\s*(?:@|©|\(a\)|\b[O0Q]\b|\ba\b)\s*((?:gmail|hotmail|outlook|yahoo|live|icloud|[\w\-]+)\.(?:com|mx|net|org|com\.mx)\b)/i); if (m) mail = m[1] + '@' + m[2]; }
   if (!mail){
     const ln = (t.match(/E-?\s?mail\s*:?\s*([^\n]+)/i) || [])[1];
     const m = ln && ln.trim().match(/^([\w.+\-]+)\s*(?:\S{1,2}\s+)?([\w\-]+\.[a-z.]{2,})$/i);
     if (m) mail = m[1] + '@' + m[2];
+  }
+  if (!mail){
+    // El @ a veces sale como E, O o Q: se prueba contra los correos que ya trae el expediente, y si no, contra el renglón de Email
+    const row = (t.match(/E-?\s?ma[il1]{1,2}\s*:?\s*([^\n]+)/i) || [])[1] || '';
+    const toks = (row + ' ' + t).match(/[\w.+\-]{3,}\.[a-z]{2,}(?:\.[a-z]{2})?/gi) || [];
+    for (const tk of toks){
+      const hit = (known.emails || []).find(e => { const k = e.toLowerCase().indexOf('@'); return k > 0 && tk.length === e.length && tk.toLowerCase().slice(0, k) === e.toLowerCase().slice(0, k) && tk.toLowerCase().slice(k + 1) === e.toLowerCase().slice(k + 1); });
+      if (hit){ mail = hit; break; }
+    }
+    if (!mail){ const m = row.trim().match(/^([\w.+\-]{2,}?)[EOQ@©]([a-z0-9\-]+\.[a-z.]{2,})$/); if (m) mail = m[1] + '@' + m[2]; }
   }
   put('CORREO ELECTRÓNICO', (mail || '').toLowerCase(), 'Email');
   const tel10 = telOCR((U.match(/TEL[EF]*ONO\s*:?\s*([0-9OIL|SZBG\s\-()]{10,18})/) || [])[1]);
@@ -1463,7 +1553,7 @@ function parseAnalyzer(t){
     const reg = /SEPARAD|SEPARACION/.test(s) ? 'SEPARACIÓN DE BIENES' : /CONYUGAL|MANCOMUN/.test(s) ? 'SOCIEDAD CONYUGAL' : '';
     put('RÉGIMEN CONYUGAL', reg, 'Estado civil (régimen)');
   }
-  const fn = U.match(/NACIMIENTO\s*:?\s*(\d{1,2}\s*(?:DE\s+)?[A-Z]+\s*(?:DE\s+)?\d{4})/) || U.match(/(\d{1,2}\s+(?:ENERO|FEBRERO|MARZO|ABRIL|MAYO|JUNIO|JULIO|AGOSTO|SEPTIEMBRE|OCTUBRE|NOVIEMBRE|DICIEMBRE)\s+\d{4})/);
+  const fn = fnA || U.match(/NACIMIENTO\s*:?\s*(\d{1,2}\s*(?:DE\s+)?[A-Z]+\s*(?:DE\s+)?\d{4})/) || U.match(/(\d{1,2}\s+(?:ENERO|FEBRERO|MARZO|ABRIL|MAYO|JUNIO|JULIO|AGOSTO|SEPTIEMBRE|OCTUBRE|NOVIEMBRE|DICIEMBRE)\s+\d{4})/);
   if (fn) put('FECHA DE NACIMIENTO', toDate(fn[1]), 'Fecha de nacimiento');
   if (curpA) out.forEach(o => { o.curp_ref = curpA; });
   const etiq = {'RFC CON HOMOCLAVE':'RFC','CURP':'CURP','FECHA DE NACIMIENTO':'fecha de nacimiento','NÚMERO CELULAR':'teléfono','CORREO ELECTRÓNICO':'correo','ESTADO CIVIL ADJUNTAR ACTA DE MATRIMONIO':'estado civil','RÉGIMEN CONYUGAL':'régimen'};
@@ -1472,7 +1562,13 @@ function parseAnalyzer(t){
   return {campos: out, nombre, faltan};
 }
 const MONEY_RE = /\$?\s?\d{1,3}(?:[,\s]\d{3})+(?:\.\d+)?|\$\s?\d+(?:\.\d+)?|\b\d{4,}(?:\.\d+)?\b/g;
-const moneyNum = s => { const n = parseFloat(String(s).replace(/[^\d.]/g, '')); return isNaN(n) ? null : n; };
+function normNum(s){
+  let t = String(s || '').replace(/[^\d.,]/g, '');
+  const m = t.match(/[.,](\d{1,2})$/);
+  if (m){ t = t.slice(0, -m[0].length).replace(/[.,]/g, '') + '.' + m[1]; } else t = t.replace(/[.,]/g, '');
+  const n = parseFloat(t); return isNaN(n) ? null : n;
+}
+const moneyNum = normNum;
 function parseCotizador(t){
   const out = []; const lines = t.split(/\n+/).map(l => l.trim()).filter(Boolean);
   const grab = (re, rej, key, ev) => {
@@ -1486,19 +1582,24 @@ function parseCotizador(t){
   grab(/^(VP|VALOR PAGARE)\b/, null, 'VALOR_3', 'VP / Valor Pagaré');
   return out;
 }
-function parseCapital(t){
+function parseCapital(t, known = []){
   const out = []; const lines = t.split(/\n+/).map(l => l.trim()).filter(Boolean);
   const socios = []; let total = null;
-  for (const l of lines){
+  for (let l of lines){
     const U = LN(l);
     if (/TOTAL/.test(U)){ const m = l.match(MONEY_RE); if (m) total = m[m.length - 1]; continue; }
-    const r = U.replace(/(\b[A-Z&]{3,4})\s(\d{6})/, '$1$2').match(/\b([A-Z&]{3,4}\d{6}[A-Z0-9]{3})\b/);
-    if (!r) continue;
-    const name = l.replace(/^[\s|]+/, '').split(/\s*(?:\d|\$|%|\|)/)[0].trim();
+    const tk = (LN(l).match(/\b[A-Z][A-Z0-9&|]{11,12}\b/g) || []).find(x => rfcCands(x).length);
+    if (!tk) continue;
+    const f = pickRfc(tk, known); const r = [null, f];
+    l = LN(l).replace(tk, f);
+    const iR = LN(l).replace(/(\b[A-Z&]{3,4})\s(\d{6})/, '$1$2').indexOf(r[1]);
+    const name = (iR > 0 ? LN(l).slice(0, iR) : LN(l).split(/\s*(?:\d|\$|%|\|)/)[0]).replace(/[^A-ZÑ ]/g, ' ').replace(/\s+/g, ' ').trim()
+      .split(' ').filter((w, k, a) => !(k === 0 && w.length <= 2 && a.length > 2)).join(' ');
     const pct = (l.match(/(\d{1,3}(?:[.,]\d+)?)\s*%/) || [])[1];
     const money = (l.replace(/\d{1,3}(?:[.,]\d+)?\s*%/, '').match(MONEY_RE) || []).filter(x => !r[1].includes(x.replace(/\D/g, '')));
     socios.push({name, pct: pct && pct.replace(',', '.') + '%', val: money[0] || '', rfc: r[1]});
   }
+  { const vistos = new Set(); for (let k = socios.length - 1; k >= 0; k--){ const key = nameKey(socios[k].name) || socios[k].rfc; if (vistos.has(key)) socios.splice(k, 1); else vistos.add(key); } socios.reverse(); socios.reverse(); }
   if (!socios.length) return {campos: out, n: 0};
   if (!total){ const s = socios.reduce((a, x) => a + (moneyNum(x.val) || 0), 0); if (s) total = String(s); }
   socios.slice(0, CAP_SLOTS.length).forEach((x, i) => {
@@ -1563,6 +1664,38 @@ function parseINE(t){
   return {campos: out, nombre, curp};
 }
 
+function parseAdminLines(lines, strip = []){
+  const out = [];
+  const SKIP = /NOMBRE|ROL|ESCRITURA|PODERES|OTORGAD|TIPO|EJECUCION|FIRMANTE|INCODE|OBLIGATORIO|INTEGRANTE|ADMINISTRACION|INDIVIDUAL|MANCOMUN|ACTOS|TITULOS|CUENTAS|PLEITOS|BIENES|SIN ROL|^SI$|^NO$/;
+  const cargos = [], nombres = [];
+  for (const l of lines){
+    const s = LN(l.t).replace(/[^A-ZÑ ]/g, ' ').replace(/\s+/g, ' ').trim();
+    const m = l.t.match(CARGOS_RE);
+    if (m && s.split(' ').length <= 5 && !/PODERES|ACTOS/.test(s)) { cargos.push({...l, v: m[0].replace(/\s+/g, ' ').trim()}); continue; }
+    if (s.split(' ').length >= 2 && s.split(' ').length <= 6 && !SKIP.test(s) && l.t.replace(/[^A-ZÁÉÍÓÚÑ ]/g, '').length >= l.t.replace(/\s/g, '').length * 0.85) nombres.push({...l, v: s});
+  }
+  if (strip.length){
+    // Franja izquierda: une renglones contiguos ("Administrador" / "Único") y busca el cargo
+    const st = strip.slice().sort((a, b) => a.y0 - b.y0); const bloques = [];
+    for (const l of st){ const b = bloques[bloques.length - 1]; if (b && l.y0 - b.y1 < (l.y1 - l.y0) * 0.9) { b.t += ' ' + l.t; b.y1 = l.y1; } else bloques.push({...l}); }
+    const delStrip = bloques.map(b => { const m = b.t.match(CARGOS_RE); return m ? {...b, v: m[0].replace(/\s+/g, ' ').trim()} : null; }).filter(Boolean);
+    if (delStrip.length >= cargos.length) { cargos.length = 0; cargos.push(...delStrip); }
+  }
+  cargos.sort((a, b) => a.y0 - b.y0);
+  const usados = new Set(); const filas = [];
+  for (const c of cargos){
+    const cy = (c.y0 + c.y1) / 2;
+    let best = -1, bd = Infinity;
+    nombres.forEach((n, i) => { if (usados.has(i)) return; const d = Math.abs((n.y0 + n.y1) / 2 - cy); if (d < bd){ bd = d; best = i; } });
+    if (best >= 0 && bd < 160){ usados.add(best); filas.push({nombre: nombres[best].v, cargo: c.v}); }
+  }
+  filas.slice(0, ADM.length).forEach((f, i) => {
+    out.push({id: ADM[i][0].id, valor: f.nombre, evidencia: `Administración de la sociedad (imagen) › integrante ${i + 1}`});
+    out.push({id: ADM[i][1].id, valor: f.cargo, evidencia: `Administración de la sociedad (imagen) › integrante ${i + 1}`});
+  });
+  return {campos: out, n: filas.length};
+}
+
 /* --- proceso local de un archivo --- */
 async function localRead(file, setMsg){
   const ext = (file.name.split('.').pop() || '').toLowerCase();
@@ -1572,12 +1705,29 @@ async function localRead(file, setMsg){
     const small = await toJpeg(blob, 1100);
     let t = await ocrText(small, p => setMsg(`Identificando ${label}… ${Math.round(p * 100)}%`));
     const kind = classifyImg(t);
-    if (kind === 'capital' || kind === 'cotizador' || kind === 'admin') t = await ocrText(blob, p => setMsg(`Leyendo la tabla de ${label}… ${Math.round(p * 100)}%`), '6');
-    else if (kind === 'analyzer') t = await ocrText(blob, p => setMsg(`Leyendo la pantalla de Analyzer… ${Math.round(p * 100)}%`));
-    if (kind === 'analyzer'){ const a = parseAnalyzer(t); res.campos.push(...a.campos); obs.push(`Pantalla de Analyzer${a.nombre ? ' de ' + a.nombre : ' (no se leyó el nombre)'}` + (a.faltan.length ? ` · no se pudo leer: ${a.faltan.join(', ')}` : '')); }
-    else if (kind === 'admin'){ const a = parseAdmin(t); res.campos.push(...a.campos); obs.push(`Administración de la sociedad: ${a.n} integrante(s)` + (a.n > ADM.length ? ` (el formato solo tiene ${ADM.length} renglones)` : '')); }
-    else if (kind === 'capital'){ const c = parseCapital(t); res.campos.push(...c.campos); obs.push(`Capital social: ${c.n} accionista(s)` + (c.n > CAP_SLOTS.length ? ` (el formato solo tiene ${CAP_SLOTS.length} renglones)` : '')); }
-    else if (kind === 'cotizador'){ res.campos.push(...parseCotizador(t)); obs.push('Cotizador'); }
+    let L = null;
+    let L2 = null;
+    if (kind === 'capital' || kind === 'cotizador'){ L = await ocrLines(await prepOCR(blob, kind === 'cotizador' ? 1400 : 2600), p => setMsg(`Leyendo la tabla de ${label}… ${Math.round(p * 100)}%`), '6'); t = L.rowsText; }
+    else if (kind === 'admin'){
+      const full = await prepOCR(blob, 2600);
+      L = await ocrLines(full, p => setMsg(`Leyendo la administración de la sociedad… ${Math.round(p * 100)}%`), '3'); t = L.rowsText;
+      const strip = await prepOCR(blob, 600, {cropW: 0.125});
+      L2 = await ocrLines(strip, p => setMsg(`Leyendo los cargos… ${Math.round(p * 100)}%`), '6');
+      const f = full.scale / strip.scale; L2.lines.forEach(l => { l.y0 *= f; l.y1 *= f; });
+    }
+    else if (kind === 'analyzer'){ L = await ocrLines(await prepOCR(blob, 2600), p => setMsg(`Leyendo la pantalla de Analyzer… ${Math.round(p * 100)}%`), '3'); t = L.rowsText + '\n' + L.text; }
+    if (kind === 'analyzer'){ const a = parseAnalyzer(t, {emails: res.campos.filter(c => /@/.test(c.valor)).map(c => c.valor)}); res.campos.push(...a.campos); obs.push(`Pantalla de Analyzer${a.nombre ? ' de ' + a.nombre : ' (no se leyó el nombre)'}` + (a.faltan.length ? ` · no se pudo leer: ${a.faltan.join(', ')}` : '')); }
+    else if (kind === 'admin'){ let a = parseAdminLines(L ? L.lines : [], L2 ? L2.lines : []); if (!a.n) a = parseAdmin(t); res.campos.push(...a.campos); obs.push(`Administración de la sociedad: ${a.n} integrante(s)` + (a.n > ADM.length ? ` (el formato solo tiene ${ADM.length} renglones)` : '')); }
+    else if (kind === 'capital'){ const c = parseCapital(t, conocidos(res.campos)); res.campos.push(...c.campos); obs.push(`Capital social: ${c.n} accionista(s)` + (c.n > CAP_SLOTS.length ? ` (el formato solo tiene ${CAP_SLOTS.length} renglones)` : '')); }
+    else if (kind === 'cotizador'){
+      const a = parseCotizador(t);
+      if (a.length < 3){
+        // Celdas con fondo de color: segunda lectura dejando solo el texto oscuro
+        const B = await ocrLines(await prepOCR(blob, 1400, {bin: true}), p => setMsg(`Leyendo celdas de color del cotizador… ${Math.round(p * 100)}%`), '6');
+        for (const c of parseCotizador(B.rowsText)) if (!a.some(x => x.id === c.id)) a.push(c);
+      }
+      res.campos.push(...a); obs.push('Cotizador');
+    }
     else if (/IDMEX|INSTITUTO NACIONAL ELECTORAL|CREDENCIAL PARA VOTAR|CLAVE DE ELECTOR/.test(LK(t))){ const e = parseINE(t); res.campos.push(...e.campos); obs.push(`INE${e.nombre ? ' de ' + e.nombre : ''}: respaldo de CURP y fecha de nacimiento del representante`); }
     else if (t.trim()) { const a = parseAnexo(t); if (a.length){ res.campos.push(...a); obs.push('Anexo (OCR)'); } else obs.push('Imagen sin datos reconocibles'); }
     return kind;
@@ -1637,7 +1787,7 @@ async function localRead(file, setMsg){
       const media = Object.keys(zip.files).filter(f => /^xl\/media\/.+\.(png|jpe?g|gif|bmp|webp)$/i.test(f)).sort();
       for (let i = 0; i < media.length; i++){
         const b = await zip.file(media[i]).async('blob'); if (b.size < 5000) continue;
-        await doImage(await toJpeg(b, 2400), `la imagen ${i + 1} de ${media.length} del Excel`);
+        await doImage(b, `la imagen ${i + 1} de ${media.length} del Excel`);
       }
     }
   } else if (ext === 'docx'){
