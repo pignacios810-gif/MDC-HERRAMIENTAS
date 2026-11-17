@@ -71,6 +71,13 @@ h2 .step{font:700 .7rem var(--f-mono);letter-spacing:.1em;color:var(--accent);ba
 /* Botón global "Minimizar / Expandir todo" en el encabezado */
 #collapseAllBtn{font:inherit;font-size:.78rem;font-weight:600;background:transparent;border:1px solid var(--line);color:var(--muted);padding:5px 11px;border-radius:6px;cursor:pointer;transition:all .15s;letter-spacing:.02em}
 #collapseAllBtn:hover{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
+/* Breadcrumb del encabezado: ruta FINSUS · ANTICIPA · MESA DE CONTROL en tono accent */
+.hdr-crumb{font:700 .72rem var(--f-mono);letter-spacing:.18em;color:var(--accent);text-transform:uppercase;text-shadow:var(--glow-cyan)}
+/* Grid del encabezado: resumen a la izquierda, nota de privacidad a la derecha; en móvil se apilan */
+.hdr-grid{display:grid;grid-template-columns:minmax(0,2.3fr) minmax(0,1fr);gap:24px;align-items:start;margin-top:8px}
+@media (max-width:640px){.hdr-grid{grid-template-columns:1fr}}
+.hdr-note{margin:0;font-size:.84rem;color:var(--muted);line-height:1.5;display:flex;align-items:flex-start;gap:8px}
+.hdr-note-ic{color:var(--excel);flex-shrink:0;font-weight:700;line-height:1.5}
 /* Elementos de vista avanzada ocultos por defecto; se muestran al desbloquear junto con las tabs avanzadas */
 .adv-only{display:none !important}
 .adv-unlocked .adv-only{display:inherit !important}
@@ -157,11 +164,15 @@ details>summary{cursor:pointer;font-weight:600;font-size:.88rem;color:var(--acce
 
 <div class="page">
   <header>
-    <div style="display:flex;align-items:flex-start;gap:12px;justify-content:space-between;flex-wrap:wrap">
-      <h1 style="flex:1 1 auto">Extractor de estados de cuenta</h1>
+    <div class="hdr-crumb">FINSUS · ANTICIPA · MESA DE CONTROL</div>
+    <div style="display:flex;align-items:flex-start;gap:12px;justify-content:space-between;flex-wrap:wrap;margin-top:6px">
+      <h1 style="flex:1 1 auto">Extractor de Estados de Cuenta</h1>
       <button type="button" id="collapseAllBtn" title="Minimizar o expandir todos los pasos" aria-label="Minimizar o expandir todos los pasos">⇅ Minimizar todo</button>
     </div>
-    <p class="lead">Carga estados de cuenta en PDF de cualquier banco o institución. <b>Banregio, Hey Banco, Santander (incluida Cuenta Santander PYME), Banca Mifel, Banco Multiva, BanBajío, BBVA, Afirme, Banamex (incluida Cuenta de Cheques corporativa SA de CV), Banorte (incluida Cta Enlace Personal con cuenta de Inversión), Scotiabank (Débito Empresarial), HSBC (Cuenta Maestra), Mercado Pago, Clip, Billpocket e Inbursa</b> se leen con un lector dedicado que concilia contra los totales y saldos impresos; para otros bancos la herramienta detecta la tabla por sus encabezados. Si el PDF es imagen (escaneado o impreso a PDF), puedes reconocer su texto con OCR. La herramienta detecta las columnas de la tabla de movimientos; tú eliges qué campos extraer y qué movimientos conservar (por ejemplo, solo abonos). Copia los datos tal cual y valida que las hojas del estado estén completas (paginación impresa vs. páginas reales, meses consecutivos entre estados) y que la CLABE y la cuenta cuadren en todos los archivos (dígito verificador de CLABE y consistencia entre meses). Todo se procesa en tu navegador; los archivos no se envían a ningún lado.</p>
+    <div class="hdr-grid">
+      <p class="lead" style="margin:0">Carga los estados de cuenta del expediente en PDF. Cada archivo pasa por el lector dedicado del banco o procesador de pagos y por dos validaciones: paginación consecutiva y consistencia de cuenta y CLABE entre meses. Si el PDF es imagen, el OCR integrado lo reconoce. La salida se exporta a Excel o CSV.</p>
+      <p class="hdr-note"><span class="hdr-note-ic">✓</span><span>Los PDFs se procesan dentro de tu navegador. No se suben ni se guardan en ningún servidor.</span></p>
+    </div>
   </header>
 
   <section class="card drop collapsible" id="drop" aria-labelledby="h-load" data-collkey="p1">
@@ -626,7 +637,7 @@ const SANTANDER={id:'santander',name:'Santander',
     const t1raw=firstText(pdf,1);const t1=t1raw.replace(/[-]/g,c=>SANT_MAP[c]||c);
     const mp=t1.match(/PERIODO DEL (\d{2})-([A-Z]{3})-(\d{4}) AL (\d{2})-([A-Z]{3})-(\d{4})/);if(mp)o.period={y:+mp[6],m:MESES_3.indexOf(mp[5]),txt:mp[0]};
     const mc=t1.match(/CODIGO DE CLIENTE NO\.\s*(\d+)/);if(mc)o.cliente=mc[1];
-    // CLABE: aparece en la primera página como "CUENTA CLABE: 000000000000000000" en el bloque "Cuenta de cheques" / "Cuenta de ahorro"
+    // CLABE: aparece en la primera página como "CUENTA CLABE: 014180655055665201" en el bloque "Cuenta de cheques" / "Cuenta de ahorro"
     const mcl=t1.match(/CUENTA CLABE:\s*(\d{15,20})/i);if(mcl)acct.clabe=mcl[1];
     // Nombre del producto si está en la primera página (CUENTA SANTANDER PYME, CUENTA EJE, CUENTA UNIVERSITARIA, etc.)
     const mnm=t1.match(/\b(CUENTA SANTANDER\s*(?:PYME|PLUS|EJE|UNIVERSITARIA|BASICA|NEGOCIOS|EMPRESARIAL|LIGHT)?|CUENTA ADVANCE|CUENTA MULTIPLE)\s+(\d{2}-\d{8}-\d)/i);
