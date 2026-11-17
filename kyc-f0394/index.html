@@ -32,12 +32,21 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 button,input,textarea,select{font:inherit;color:inherit}
 button{cursor:pointer}
 :focus-visible{outline:2px solid var(--coral);outline-offset:2px}
+.hero{background:var(--top);color:var(--top-ink)}
+.hero-in{max-width:1380px;margin:0 auto;padding-block:26px 22px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;grid-template-columns:minmax(0,1fr) minmax(0,330px);gap:18px 40px;align-items:end}
+.hero .kick{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--coral);margin:0 0 8px}
+.hero h1{font-size:clamp(24px,3.2vw,32px);line-height:1.15;letter-spacing:-.02em;margin:0 0 10px;font-weight:700}
+.hero .lead{margin:0;max-width:68ch;font-size:15px;line-height:1.55;color:var(--top-muted)}
+.hero .lead b{color:var(--top-ink);font-weight:600}
+.hero .priv{display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.45;color:var(--top-muted);margin:0}
+.hero .priv svg{flex:none;width:18px;height:18px;color:#43c99c;margin-top:1px}
+@media (max-width:820px){.hero-in{grid-template-columns:minmax(0,1fr);padding-block:20px 18px}}
 .top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--top);color:var(--top-ink);border-bottom:3px solid var(--coral)}
 .top-in{max-width:1380px;margin:0 auto;padding-block:12px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;gap:16px;align-items:center;flex-wrap:wrap}
 .brand{display:flex;flex-direction:column;min-width:0;margin-right:auto}
 .brand b{font-size:16px;letter-spacing:-.01em}
 .brand span{font-size:12px;color:var(--top-muted)}
-.brand .ver{font-weight:600;color:var(--top-ink)}
+.brand .ver{font-size:12px;font-weight:600;color:var(--top-ink)}
 .brand b i{font-style:normal;color:var(--coral)}
 .meter{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--top-muted);font-variant-numeric:tabular-nums}
 .bar{width:140px;height:6px;border-radius:3px;background:var(--top-line);overflow:hidden}
@@ -137,8 +146,16 @@ button{cursor:pointer}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 
+<section class="hero" aria-labelledby="heroTitle"><div class="hero-in">
+  <div>
+    <p class="kick">Finsus · Anticipa · Mesa de control</p>
+    <h1 id="heroTitle">Llenado de KYC Persona Física</h1>
+    <p class="lead">Sube la <b>PLANTILLA</b> del expediente y la <b>INE</b> del cliente. La herramienta toma los datos de la hoja PLATILLA-KYC y de la imagen del cotizador, llena el formato <b>F/0394 de Sofimex</b> y te deja descargar el PDF listo. Antes de descargar solo confirmas la fecha y si cada domicilio tiene número interior.</p>
+  </div>
+  <p class="priv"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg><span>Los archivos se leen dentro de tu navegador. No se suben ni se guardan en ningún servidor.</span></p>
+</div></section>
 <header class="top"><div class="top-in">
-  <div class="brand" title="Versión de la herramienta"><b>KYC Persona Física · F/0394</b><span>Sofimex, Institución de Garantías · Fiduciario · <b class="ver">Versión 15-nov-2026 (65)</b></span></div>
+  <div class="brand" title="Versión de la herramienta"><b>KYC Persona Física · F/0394</b><span>Sofimex, Institución de Garantías · Fiduciario · <b class="ver">Versión 16-nov-2026 (66)</b></span></div>
   <div class="meter"><div class="bar"><i id="barFill"></i></div><span id="meterTxt">0 de 0 campos</span></div>
   <div class="actions">
     <button class="btn primary" id="btnPdf" type="button">Descargar PDF lleno</button>
