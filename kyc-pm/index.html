@@ -153,7 +153,7 @@ section.sec{background:var(--surface);border:1px solid var(--line);border-radius
 </style>
 
 <header class="top"><div class="top-in wrap">
-  <div class="brand"><b>KYC Persona Moral</b><span>Sofimex · Fiduciario · plantilla con datos fijos · versión 16/11/2026 20:45</span></div>
+  <div class="brand"><b>KYC Persona Moral</b><span>Sofimex · Fiduciario · plantilla con datos fijos · versión 16/11/2026 20:50</span></div>
   <div class="exp"><label for="expName">Expediente</label><input id="expName" placeholder="Ej. NOMBRE DE LA EMPRESA F/0394" autocomplete="off"></div>
   <div class="meter" title="Campos editables con valor"><div class="bar"><i id="barFill"></i></div><span id="meterTxt">0 / 0</span><small>editables</small></div>
   <div class="actions">
@@ -1563,6 +1563,24 @@ async function buildPdf(){
     }catch(e){ fails.push(d.id); }
   }
   const font = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
+  // Tamaño de letra que sí cabe en cada casilla (la plantilla trae tamaño automático y en casillas angostas el visor oculta el texto)
+  for (const f of form.getFields()){
+    if (!(f instanceof PDFLib.PDFTextField)) continue;
+    const t = f.getText(); if (!t) continue;
+    const w = f.acroField.getWidgets()[0]; if (!w) continue;
+    const r = w.getRectangle(); const W = r.width - 4, H = r.height - 2;
+    const ml = f.isMultiline();
+    const words = t.split(/\s+/).filter(Boolean);
+    let size = ml ? 11 : Math.min(11, H / 1.15);
+    for (; size > 4; size -= 0.25){
+      if (!ml){ if (font.widthOfTextAtSize(t, size) <= W) break; continue; }
+      if (words.some(x => font.widthOfTextAtSize(x, size) > W)) continue;
+      let lines = 1, cur = 0; const sp = font.widthOfTextAtSize(' ', size);
+      for (const x of words){ const wx = font.widthOfTextAtSize(x, size); if (cur && cur + sp + wx > W){ lines++; cur = wx; } else cur += (cur ? sp : 0) + wx; }
+      if (lines * size * 1.2 <= H) break;
+    }
+    try { f.setFontSize(Math.max(4, Math.round(size * 4) / 4)); } catch(_){}
+  }
   form.updateFieldAppearances(font);
   return {bytes: await doc.save(), fails};
 }
