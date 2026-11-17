@@ -68,6 +68,14 @@ header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background
 #docView[hidden]{display:none}
 .btn.primary.locked{background:var(--surface);color:var(--accent)}
 .btn:focus-visible,.chip:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,.drop:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.hero{max-width:1400px;margin:0 auto;padding-block:22px 4px;display:flex;flex-wrap:wrap;gap:14px 40px;align-items:flex-end;justify-content:space-between}
+.hero-main{flex:1 1 520px;min-width:0}
+.hero .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--auto);margin:0 0 6px}
+.hero h1{font-size:30px;line-height:1.15;margin:0 0 10px;letter-spacing:-.01em;text-wrap:balance}
+.hero .lead{font-size:15px;line-height:1.55;color:var(--muted);margin:0;max-width:72ch}
+.hero .lead b{color:var(--ink);font-weight:600}
+.privacy{flex:0 1 340px;display:flex;gap:10px;align-items:flex-start;font-size:13px;color:var(--muted);line-height:1.45}
+.privacy svg{flex:none;width:18px;height:18px;color:var(--auto);margin-top:1px}
 .layout{display:grid;grid-template-columns:340px minmax(0,1fr);gap:20px;max-width:1400px;margin:0 auto;padding-block:20px 60px}
 @media (max-width:900px){.layout{grid-template-columns:minmax(0,1fr)}}
 aside{display:flex;flex-direction:column;gap:14px;min-width:0}
@@ -153,7 +161,7 @@ section.sec{background:var(--surface);border:1px solid var(--line);border-radius
 </style>
 
 <header class="top"><div class="top-in wrap">
-  <div class="brand"><b>KYC Persona Moral</b><span>Sofimex · Fiduciario · plantilla con datos fijos · versión 16/11/2026 21:25</span></div>
+  <div class="brand"><b>KYC Persona Moral</b><span>Plantilla con datos fijos · versión 16/11/2026 21:30</span></div>
   <div class="exp"><label for="expName">Expediente</label><input id="expName" placeholder="Ej. NOMBRE DE LA EMPRESA F/0394" autocomplete="off"></div>
   <div class="meter" title="Campos editables con valor"><div class="bar"><i id="barFill"></i></div><span id="meterTxt">0 / 0</span><small>editables</small></div>
   <div class="actions">
@@ -166,6 +174,14 @@ section.sec{background:var(--surface);border:1px solid var(--line);border-radius
 </div></header>
 <input type="file" id="loadInput" class="hidden-input" accept=".json,application/json" tabindex="-1">
 
+<section class="hero wrap" aria-labelledby="heroTitle">
+  <div class="hero-main">
+    <p class="eyebrow">Finsus · Anticipa · Mesa de control</p>
+    <h1 id="heroTitle">KYC Persona Moral · Sofimex</h1>
+    <p class="lead">Sube el <b>anexo en PDF</b> y el <b>Excel PLANTILLA</b> con sus imágenes; la INE y la CSF son opcionales. El formato KYC se llena con tus reglas, los datos fijos de la plantilla no se mueven y lo que no cuadra queda en <b>Revisar</b>. Antes de descargar el PDF te pide la fecha, los comprobantes y el núm. interior.</p>
+  </div>
+  <p class="privacy" id="privacyNote"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg><span id="privacyText">Los documentos se leen dentro de tu navegador. No se suben ni se guardan en ningún servidor.</span></p>
+</section>
 <div class="layout wrap">
   <aside>
     <div class="panel">
@@ -1848,6 +1864,7 @@ async function init(){
   C.use('downloads').then(d => { downloads = d; });
   sample = await C.use('sample');
   if (!sample){ showAiOff('Lectura local activa (sin Claude): revisa lo que llene, es menos preciso que la lectura con Claude.'); return; }
+  { const pt = document.getElementById('privacyText'); if (pt) pt.textContent = 'En esta versión los documentos se leen con Claude. El PDF y el Excel se arman en tu navegador.'; }
   LIMITS = await sample.limits().catch(() => null);
   if (!LIMITS?.images) showAiOff('En esta vista solo se leen archivos con texto (PDF digital, Excel, Word, PowerPoint). Las fotos y escaneos necesitan abrir la página en Claude con permiso de imágenes.');
 }
