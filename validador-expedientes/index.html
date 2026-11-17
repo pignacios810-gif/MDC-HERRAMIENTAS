@@ -1,5 +1,8 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html>
+<html lang="es">
+<head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Validador de Expedientes</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -35,6 +38,7 @@ h2{font-size:22px;font-weight:600;display:flex;align-items:baseline;gap:10px;fle
 h3{font-size:16px;font-weight:600}
 .count{font-family:var(--f-mono);font-size:13px;color:var(--muted);font-weight:400}
 .eyebrow{font-family:var(--f-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.lede-row{display:flex;gap:28px;align-items:flex-start;flex-wrap:wrap}.lede-row .lede{flex:1 1 520px;margin:0}.lede-note{flex:0 1 300px;display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--muted);margin:4px 0 0}.lede-note svg{flex:none;margin-top:2px}
 .mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
 .lede{color:var(--muted);max-width:78ch;margin:0}
 .small{font-size:12px;color:var(--muted)}
@@ -128,9 +132,12 @@ details.exp>summary .grow{flex:1 1 260px;min-width:0}
 
 <div class="wrap">
   <header>
-    <span class="eyebrow">Anticipa Finsus · Fideicomiso F/0394 · cruce de expedientes</span>
+    <span class="eyebrow">Finsus · Anticipa · Mesa de Control</span>
     <h1>Validador de Expedientes</h1>
-    <p class="lede">Sube los archivos de uno o varios expedientes a la vez (contrato, pagaré, convenio, KYC, tabla de amortización, cotizador, CSF). La página los separa por expediente, cruza los datos con las reglas de la revisión manual y te deja descargar el Excel de cada uno con la misma estructura. Si vuelves a subir un expediente corregido, la página lo compara con la versión anterior y te muestra qué cambió. Todo se procesa en tu navegador; ningún archivo sale de tu equipo.</p>
+    <div class="lede-row">
+      <p class="lede">Sube los documentos del expediente (contrato, pagaré, convenio, KYC, cotizador y tabla de amortización). Cada expediente pasa por el cruce completo: datos generales, fechas, montos, cuentas CLABE, firmantes y campos variables. El resultado sale con semáforo y Excel.</p>
+      <p class="lede-note"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="7" stroke="#3fb97a" stroke-width="1.4"/><path d="M4.8 8.2l2.1 2.1 4.3-4.6" stroke="#3fb97a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Los archivos se revisan dentro de tu navegador. No se suben ni se guardan en ningún servidor.</span></p>
+    </div>
   </header>
 
   <section class="card" aria-labelledby="h-carga">
@@ -550,4 +557,5 @@ $("#zipBtn").addEventListener("click", async () => {
 render();
 </script>
 
-</body></html>
+</body>
+</html>
