@@ -941,6 +941,8 @@ let queue = Promise.resolve();
 function addFiles(list){
   const files = [...list];
   if (!files.length) return;
+  // Sin Claude: empieza a descargar el OCR de una vez, mientras se leen los textos
+  if (!sample && files.some(f => !/\.(csv|txt|json|docx)$/i.test(f.name))) { try { ocrWorker().catch(() => {}); } catch(_){} }
   $('#filesPanel').hidden = false;
   for (const f of files){
     const item = {name:f.name, size:f.size, state:'wait', msg:'En espera'};
@@ -971,20 +973,24 @@ const TESS = {
   script: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js',
   workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js',
   corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1',
-  langPath: 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/spa@1.0.0/4.0.0_best_int',
+  langPath: 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/spa@1.0.0/4.0.0',
 };
 const LN = s => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
 const LK = s => LN(s).replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();   // clave para comparar rótulos
-let ocrProgress = null, ocrWorkerP = null;
+let ocrProgress = null, ocrWorkerP = null, ocrLoadMsg = null;
 function loadScript(src){
   return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('No se pudo cargar el lector OCR. Revisa tu conexión a internet.')); document.head.append(s); });
 }
 async function ocrWorker(){
   if (!ocrWorkerP){
     ocrWorkerP = (async () => {
+      if (ocrLoadMsg) ocrLoadMsg('Preparando el lector OCR (solo la primera vez)…');
       if (!window.Tesseract) await loadScript(TESS.script);
       return await Tesseract.createWorker('spa', 1, { workerPath: TESS.workerPath, corePath: TESS.corePath, langPath: TESS.langPath,
-        logger: m => { if (ocrProgress && m.status === 'recognizing text') ocrProgress(m.progress); } });
+        logger: m => {
+          if (m.status === 'recognizing text'){ if (ocrProgress) ocrProgress(m.progress); }
+          else if (ocrLoadMsg && /loading|initializ/i.test(m.status)) ocrLoadMsg('Preparando el lector OCR (solo la primera vez)… ' + Math.round((m.progress || 0) * 100) + '%');
+        } });
     })();
     ocrWorkerP.catch(() => { ocrWorkerP = null; });
   }
@@ -1321,9 +1327,11 @@ async function localRead(file, setMsg){
   const res = {tipo_documento: '', campos: [], observaciones: ''};
   const obs = [];
   const doImage = async (blob, label) => {
-    let t = await ocrText(blob, p => setMsg(`Leyendo ${label} con OCR… ${Math.round(p * 100)}%`));
+    const small = await toJpeg(blob, 1100);
+    let t = await ocrText(small, p => setMsg(`Identificando ${label}… ${Math.round(p * 100)}%`));
     const kind = classifyImg(t);
     if (kind === 'capital' || kind === 'cotizador' || kind === 'admin') t = await ocrText(blob, p => setMsg(`Leyendo la tabla de ${label}… ${Math.round(p * 100)}%`), '6');
+    else if (kind === 'analyzer') t = await ocrText(blob, p => setMsg(`Leyendo la pantalla de Analyzer… ${Math.round(p * 100)}%`));
     if (kind === 'analyzer'){ const a = parseAnalyzer(t); res.campos.push(...a.campos); obs.push(`Pantalla de Analyzer${a.nombre ? ' de ' + a.nombre : ' (no se leyó el nombre)'}`); }
     else if (kind === 'admin'){ const a = parseAdmin(t); res.campos.push(...a.campos); obs.push(`Administración de la sociedad: ${a.n} integrante(s)` + (a.n > ADM.length ? ` (el formato solo tiene ${ADM.length} renglones)` : '')); }
     else if (kind === 'capital'){ const c = parseCapital(t); res.campos.push(...c.campos); obs.push(`Capital social: ${c.n} accionista(s)` + (c.n > CAP_SLOTS.length ? ` (el formato solo tiene ${CAP_SLOTS.length} renglones)` : '')); }
@@ -1336,9 +1344,33 @@ async function localRead(file, setMsg){
     res.tipo_documento = 'IMAGEN'; await doImage(await toJpeg(file, 2400), 'la imagen');
   } else if (ext === 'pdf'){
     const buf = await file.arrayBuffer();
-    const {text, images} = await readPdf(buf, 8);
-    let full = text;
-    for (let i = 0; i < images.length; i++) full += '\n' + await ocrText(images[i], p => setMsg(`OCR de página escaneada ${i + 1} de ${images.length}… ${Math.round(p * 100)}%`));
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    setMsg('Abriendo el PDF…');
+    const pdf = await pdfjsLib.getDocument({data: buf}).promise;
+    const n = Math.min(pdf.numPages, 40);
+    const pages = []; const scanned = [];
+    for (let i = 1; i <= n; i++){
+      setMsg(`Leyendo texto, página ${i} de ${n}…`);
+      const pg = await pdf.getPage(i); const tc = await pg.getTextContent();
+      let t = ''; let lastY = null;
+      for (const it of tc.items){ const y = it.transform ? Math.round(it.transform[5]) : null; if (lastY !== null && y !== lastY) t += '\n'; else if (t) t += ' '; t += it.str; lastY = y; }
+      pages[i] = t.replace(/[ \t]+/g, ' ').trim();
+      if (pages[i].replace(/\s/g, '').length < 40) scanned.push(i);
+    }
+    const anexoListo = txt => { const r = parseAnexo(txt); return r.some(c => c.id === BYKEY['NOMBRE Y NÚMERO  DE LA IDENTIFICACIÓN  AUTORIDAD QUE LA EMITE'].id) && r.length >= 12; };
+    let full = pages.filter(Boolean).join('\n');
+    let ocrHechas = 0;
+    for (const i of scanned.slice(0, 12)){
+      if (anexoListo(full)) break;
+      setMsg(`Página ${i} de ${n} es imagen: preparándola…`);
+      const pg = await pdf.getPage(i); const vp = pg.getViewport({scale: 2.2});
+      const c = document.createElement('canvas'); c.width = vp.width; c.height = vp.height;
+      await pg.render({canvasContext: c.getContext('2d'), viewport: vp}).promise;
+      const img = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.85));
+      full += '\n' + await ocrText(img, p => setMsg(`Página ${i} de ${n} es imagen: OCR ${Math.round(p * 100)}%`));
+      ocrHechas++;
+    }
+    obs.push(`${n} página(s)` + (scanned.length ? `, ${scanned.length} escaneada(s); OCR en ${ocrHechas}` : ', todas con texto'));
     if (/CONSTANCIA DE SITUACION FISCAL/.test(LK(full))){ res.tipo_documento = 'CSF'; res.campos.push(...parseCSF(full)); }
     else { res.tipo_documento = 'ARCHIVO PDF ANEXO'; res.campos.push(...parseAnexo(full)); }
   } else if (SHEET_EXT.includes(ext)){
@@ -1368,14 +1400,19 @@ async function localRead(file, setMsg){
 
 async function processLocal(file, item, li){
   item.state='read'; item.msg='Leyendo archivo…'; paintFile(li, item);
-  const res = await localRead(file, m => { item.msg = m; paintFile(li, item); });
+  const t0 = performance.now();
+  const setMsg = m => { item.msg = m; paintFile(li, item); };
+  ocrLoadMsg = setMsg;
+  let res;
+  try { res = await localRead(file, setMsg); } finally { ocrLoadMsg = null; }
+  const secs = Math.round((performance.now() - t0) / 1000);
   item.tipo = res.tipo_documento; item.obs = res.observaciones;
   const r = apply(res, file.name);
   render();
   item.state='done';
   item.applied = (item.applied||0) + r.applied; item.conf = (item.conf||0) + r.conflicts;
   item.held = S.pending.filter(p => p.src === file.name).length;
-  item.msg = fileMsg(item) + (r.applied || r.conflicts || item.held ? '' : ' · no se reconocieron datos de este archivo');
+  item.msg = fileMsg(item) + (r.applied || r.conflicts || item.held ? '' : ' · no se reconocieron datos de este archivo') + ` · ${secs} s`;
   paintFile(li, item); persist();
 }
 async function processFile(file, item, li){
