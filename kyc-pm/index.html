@@ -161,7 +161,7 @@ section.sec{background:var(--surface);border:1px solid var(--line);border-radius
 </style>
 
 <header class="top"><div class="top-in wrap">
-  <div class="brand"><b>KYC Persona Moral</b><span>Plantilla con datos fijos · versión 16/11/2026 21:35</span></div>
+  <div class="brand"><b>KYC Persona Moral</b><span>Plantilla con datos fijos · versión 16/11/2026 23:00</span></div>
   <div class="exp"><label for="expName">Expediente</label><input id="expName" placeholder="Ej. NOMBRE DE LA EMPRESA F/0394" autocomplete="off"></div>
   <div class="meter" title="Campos editables con valor"><div class="bar"><i id="barFill"></i></div><span id="meterTxt">0 / 0</span><small>editables</small></div>
   <div class="actions">
@@ -749,13 +749,14 @@ function sameName(a, b){
   return ta.every(x => { const k = tb.findIndex((y, i) => !used.has(i) && lev(x, y) <= (Math.max(x.length, y.length) > 6 ? 2 : 1)); if (k < 0) return false; used.add(k); return true; });
 }
 // Aplica valores que dependen de que el nombre del documento sea el del representante
+const esElRL = (nombre, curp, rn) => sameName(nombre, rn) || (typeof curpDeNombre === 'function' && curpDeNombre(curp, rn));
 function resolvePending(){
   const rep = BYID[REP_ID]; const rn = hasValue(rep) ? cur(rep) : '';
   if (!rn || !S.pending.length) return false;
   const keep = [];
   for (const p of S.pending){
     const it = S.files.find(f => f.name === p.src && f.state === 'done');
-    if (sameName(p.nombre, rn)){
+    if (esElRL(p.nombre, p.curp, rn)){
       const r = setValue(BYID[p.id], p.v, p.src, p.ev);
       if (it){ it.held = Math.max(0, (it.held||0) - 1); if (r === 'new') it.applied = (it.applied||0) + 1; else if (r === 'conf') it.conf = (it.conf||0) + 1; else it.same = (it.same||0) + 1; }
     } else {
@@ -806,8 +807,10 @@ function apply(result, srcName){
     if (c.soloSiVacio && hasValue(d)) continue;
     if (c.condicion_nombre && d.id !== REP_ID){
       const rep = BYID[REP_ID]; const rn = hasValue(rep) ? cur(rep) : '';
-      if (!rn){ S.pending.push({id:d.id, v, src:srcName, ev, nombre:String(c.condicion_nombre)}); held++; continue; }
-      if (!sameName(c.condicion_nombre, rn)){ addConf(d, {v, src:srcName, nota:`El nombre del documento (${c.condicion_nombre}) no coincide con el representante (${rn}). No se usó.`}); conflicts++; continue; }
+      if (!rn){ S.pending.push({id:d.id, v, src:srcName, ev, nombre:String(c.condicion_nombre), curp:c.curp_ref||''}); held++; continue; }
+      if (!esElRL(c.condicion_nombre, c.curp_ref, rn)){
+        if (hasValue(d) && norm(cur(d)) === norm(v)) continue;   // mismo dato que ya está: no hay nada que revisar
+        addConf(d, {v, src:srcName, nota:`El nombre del documento (${c.condicion_nombre}) no coincide con el representante (${rn}). No se usó.`}); conflicts++; continue; }
     }
     if (isFixed(d)){
       if (norm(v) !== norm(d.fixed)) { addConf(d, {v, src:srcName, ev, nota:c.nota||''}); conflicts++; }
@@ -1109,6 +1112,57 @@ const fixCurp = c => {
   return c.slice(0, 16) + (siglo20 ? d(c[16]) : c[16]) + d(c[17]);
 };
 
+/* --- correcciones de OCR para RFC, CURP y teléfonos --- */
+const OCR_DIG = {O:'0',Q:'0',D:'0',U:'0',I:'1',L:'1','|':'1',J:'1',Z:'2',S:'5',G:'6',T:'7',B:'8',A:'4',E:'8'};
+const digs = s => String(s).toUpperCase().split('').map(c => /\d/.test(c) ? c : (OCR_DIG[c] || c)).join('');
+const OCR_LET = {'0':'O','1':'I','5':'S','8':'B','2':'Z','6':'G','4':'A'};
+const lets = s => String(s).toUpperCase().split('').map(c => /[A-ZÑ&]/.test(c) ? c : (OCR_LET[c] || c)).join('');
+const fechaValida = (yy, mm, dd) => { const t = new Date(2000 + +yy, +mm - 1, +dd); return +mm >= 1 && +mm <= 12 && t.getDate() === +dd; };
+// Busca un RFC de persona física (13) o moral (12) aunque el OCR haya cambiado letras por números o al revés
+function rfcOCR(text, afterLabel = true){
+  const U = LN(text).replace(/[^A-Z0-9&Ñ|:\n ]/g, ' ');
+  const cands = [];
+  if (afterLabel){ const m = U.match(/RFC\s*:?\s*([A-Z0-9&Ñ|]{12,14})/); if (m) cands.push(m[1]); }
+  cands.push(...(U.match(/\b[A-Z0-9&Ñ|]{13}\b/g) || []));
+  for (const c of cands){
+    for (const len of [13, 12]){
+      if (c.length < len) continue;
+      const s = c.slice(0, len), n = len - 9;
+      const r = lets(s.slice(0, n)) + digs(s.slice(n, n + 6)) + s.slice(n + 6);
+      const m = r.match(/^([A-ZÑ&]{3,4})(\d{2})(\d{2})(\d{2})([A-Z0-9]{3})$/);
+      if (m && fechaValida(m[2], m[3], m[4])) return r;
+    }
+  }
+  return '';
+}
+function curpOCR(text){
+  const U = LN(text).replace(/[^A-Z0-9|:\n ]/g, ' ');
+  const cands = [];
+  const m0 = U.match(/CURP\s*:?\s*([A-Z0-9|]{17,19})/); if (m0) cands.push(m0[1]);
+  cands.push(...(U.match(/\b[A-Z0-9|]{18}\b/g) || []));
+  for (const c of cands){
+    const s = c.slice(0, 18); if (s.length < 18) continue;
+    const r = lets(s.slice(0, 4)) + digs(s.slice(4, 10)) + lets(s.slice(10, 16)) + s[16] + digs(s[17]);
+    const m = r.match(/^[A-Z]{4}(\d{2})(\d{2})(\d{2})[HM][A-Z]{5}[A-Z0-9]\d$/);
+    if (m && fechaValida(m[1], m[2], m[3])) return fixCurp(r);
+  }
+  return '';
+}
+const telOCR = s => { const d = digs(String(s || '').replace(/[\s\-().]/g, '')).replace(/\D/g, ''); return d.length >= 10 ? d.slice(-10) : ''; };
+// ¿La CURP corresponde a este nombre? (iniciales: 1a letra y 1a vocal interna del 1er apellido, 1a del 2o apellido, 1a del nombre)
+function curpDeNombre(curp, nombre){
+  if (!curp || !nombre) return false;
+  const W = LN(nombre).replace(/[^A-ZÑ ]/g, ' ').split(/\s+/).filter(w => w && !/^(DE|DEL|LA|LAS|LOS|Y|MC|MAC|VAN|VON)$/.test(w));
+  if (W.length < 3) return false;
+  const ini = (ap, am, noms) => {
+    const n = noms.length > 1 && /^(JOSE|J|MARIA|MA|M)$/.test(noms[0]) ? noms[1] : noms[0];
+    const v = (ap.slice(1).match(/[AEIOU]/) || ['X'])[0];
+    return (ap[0] + v + (am ? am[0] : 'X') + n[0]).replace(/Ñ/g, 'X');
+  };
+  const p = curp.slice(0, 4);
+  return ini(W[W.length - 2], W[W.length - 1], W.slice(0, -2)) === p || ini(W[0], W[1], W.slice(2)) === p;
+}
+
 /* --- texto en renglones --- */
 // Corta el valor en el siguiente rótulo "Algo:" del mismo renglón
 function cutAtNextLabel(rest, stops){
@@ -1380,9 +1434,17 @@ function parseAnalyzer(t){
   }
   const cond = nombre || '(NOMBRE NO LEÍDO EN LA PANTALLA DE ANALYZER)';
   const out = []; const put = (key, v, ev) => { if (v && BYKEY[key]) out.push({id: BYKEY[key].id, valor: v, evidencia: 'Analyzer › ' + ev, condicion_nombre: cond}); };
-  const rfc = (U.replace(/\s(?=[A-Z0-9]{2,}\b)/g, ' ').match(/RFC\s*:?\s*([A-Z&]{4}\d{6}[A-Z0-9]{3})/) || U.match(/\b([A-Z&]{4}\d{6}[A-Z0-9]{3})\b/) || [])[1];
+  const curpA = curpOCR(t);
+  let rfc = rfcOCR(t);
+  if (rfc && curpA && rfc.slice(0, 10) !== curpA.slice(0, 10)){
+    // La CURP y el RFC comparten los primeros 10 caracteres: si difieren por un error del OCR, manda la CURP
+    const alt = rfcOCR(t, false);
+    rfc = alt && alt.slice(0, 10) === curpA.slice(0, 10) ? alt : (lev(rfc.slice(0, 10), curpA.slice(0, 10)) <= 2 ? curpA.slice(0, 10) + rfc.slice(10) : rfc);
+  }
+  if (rfc && rfc.length === 13) rfc = rfc.slice(0, 12) + rfc[12].replace(/O/, '0');
   put('RFC CON HOMOCLAVE', rfc, 'RFC');
-  put('CURP', fixCurp((U.replace(/(CURP\s*:?\s*[A-Z]{4}\d{6}[HM][A-Z]{5})([A-Z0-9])O(\d?)\b/, '$1$2O$3').match(CURP_RE) || [])[0]), 'CURP');
+  put('CURP', curpA, 'CURP');
+  if (curpA) out.forEach(o => { o.curp_ref = curpA; });
   let mail = (t.match(/[\w.+\-]+@[\w\-]+\.[\w.\-]+/) || [])[0];
   if (!mail){ const m = t.match(/([\w.+\-]{2,})\s*(?:@|©|\(a\)|\b[O0Q]\b|\ba\b)\s*((?:gmail|hotmail|outlook|yahoo|live|icloud|[\w\-]+)\.(?:com|mx|net|org|com\.mx)\b)/i); if (m) mail = m[1] + '@' + m[2]; }
   if (!mail){
@@ -1391,8 +1453,7 @@ function parseAnalyzer(t){
     if (m) mail = m[1] + '@' + m[2];
   }
   put('CORREO ELECTRÓNICO', (mail || '').toLowerCase(), 'Email');
-  const tel = (U.match(/TEL[EF]*ONO\s*:?\s*([\d\s\-()]{10,16})/) || [])[1];
-  const tel10 = tel ? tel.replace(/\D/g, '').slice(-10) : '';
+  const tel10 = telOCR((U.match(/TEL[EF]*ONO\s*:?\s*([0-9OIL|SZBG\s\-()]{10,18})/) || [])[1]);
   put('NÚMERO CELULAR', tel10, 'Teléfono'); put('NÚMERO TELÉFONO FIJO', tel10, 'Teléfono');
   const ec = U.match(/ESTADO CIVIL\s*:?\s*([A-Z() ]{4,60})/);
   if (ec){
@@ -1404,6 +1465,7 @@ function parseAnalyzer(t){
   }
   const fn = U.match(/NACIMIENTO\s*:?\s*(\d{1,2}\s*(?:DE\s+)?[A-Z]+\s*(?:DE\s+)?\d{4})/) || U.match(/(\d{1,2}\s+(?:ENERO|FEBRERO|MARZO|ABRIL|MAYO|JUNIO|JULIO|AGOSTO|SEPTIEMBRE|OCTUBRE|NOVIEMBRE|DICIEMBRE)\s+\d{4})/);
   if (fn) put('FECHA DE NACIMIENTO', toDate(fn[1]), 'Fecha de nacimiento');
+  if (curpA) out.forEach(o => { o.curp_ref = curpA; });
   const etiq = {'RFC CON HOMOCLAVE':'RFC','CURP':'CURP','FECHA DE NACIMIENTO':'fecha de nacimiento','NÚMERO CELULAR':'teléfono','CORREO ELECTRÓNICO':'correo','ESTADO CIVIL ADJUNTAR ACTA DE MATRIMONIO':'estado civil','RÉGIMEN CONYUGAL':'régimen'};
   const got = new Set(out.map(o => CAT.find(d => d.id === o.id).key));
   const faltan = Object.entries(etiq).filter(([k]) => !got.has(k)).map(([, v]) => v);
@@ -1491,11 +1553,11 @@ function parseINE(t){
     const m = U.match(/CURP\s*:?\s*([A-Z]{4})([A-Z0-9]{5,8}?)([HM][A-Z]{5}[A-Z0-9][0-9A-Z])\b/);
     if (m && fecha){ const [dd, mm, yyyy] = fecha.split('/'); curpRaw = m[1] + yyyy.slice(2) + mm + dd + m[3]; }
   }
-  const curp = curpRaw ? fixCurp(curpRaw) : '';
+  const curp = curpRaw ? fixCurp(curpRaw) : curpOCR(t);
   if (!fecha && curp){ const yy = +curp.slice(4, 6), mm = curp.slice(6, 8), dd = curp.slice(8, 10); fecha = `${dd}/${mm}/${(/^\d$/.test(curp[16]) ? 1900 : 2000) + yy}`; }
   const cond = nombre || '(NOMBRE NO LEÍDO EN LA INE)';
   const out = [];
-  const put = (key, v, ev) => { if (v && BYKEY[key]) out.push({id: BYKEY[key].id, valor: v, evidencia: 'INE › ' + ev, condicion_nombre: cond, soloSiVacio: 1}); };
+  const put = (key, v, ev) => { if (v && BYKEY[key]) out.push({id: BYKEY[key].id, valor: v, evidencia: 'INE › ' + ev, condicion_nombre: cond, curp_ref: curp, soloSiVacio: 1}); };
   put('CURP', curp, 'CURP');
   put('FECHA DE NACIMIENTO', fecha, curp && !/FECHA DE NACIMIENTO/.test(U) ? 'fecha de nacimiento (de la CURP)' : 'Fecha de nacimiento');
   return {campos: out, nombre, curp};
