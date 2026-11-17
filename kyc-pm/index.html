@@ -153,7 +153,7 @@ section.sec{background:var(--surface);border:1px solid var(--line);border-radius
 </style>
 
 <header class="top"><div class="top-in wrap">
-  <div class="brand"><b>KYC Persona Moral</b><span>Sofimex · Fiduciario · plantilla con datos fijos · versión 16/11/2026 21:15</span></div>
+  <div class="brand"><b>KYC Persona Moral</b><span>Sofimex · Fiduciario · plantilla con datos fijos · versión 16/11/2026 21:20</span></div>
   <div class="exp"><label for="expName">Expediente</label><input id="expName" placeholder="Ej. NOMBRE DE LA EMPRESA F/0394" autocomplete="off"></div>
   <div class="meter" title="Campos editables con valor"><div class="bar"><i id="barFill"></i></div><span id="meterTxt">0 / 0</span><small>editables</small></div>
   <div class="actions">
@@ -760,6 +760,7 @@ function apply(result, srcName){
     const v = fmt(d, c.valor);
     if (!v) continue;
     const ev = c.evidencia ? String(c.evidencia).slice(0,160) : '';
+    if (c.soloSiVacio && hasValue(d)) continue;
     if (c.condicion_nombre && d.id !== REP_ID){
       const rep = BYID[REP_ID]; const rn = hasValue(rep) ? cur(rep) : '';
       if (!rn){ S.pending.push({id:d.id, v, src:srcName, ev, nombre:String(c.condicion_nombre)}); held++; continue; }
@@ -994,7 +995,7 @@ const TESS = {
   script: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js',
   workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js',
   corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1',
-  langPath: 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/spa@1.0.0/4.0.0',
+  langPath: 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/spa@1.0.0/4.0.0_best_int',
 };
 const LN = s => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
 const LK = s => LN(s).replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();   // clave para comparar rótulos
@@ -1421,6 +1422,42 @@ function parseAdmin(t){
   return {campos: out, n: filas.length};
 }
 
+/* --- INE: respaldo de CURP y fecha de nacimiento del representante (solo si el nombre coincide) --- */
+function parseINE(t){
+  const U = LN(t); const lines = t.split(/\n+/).map(l => l.trim()).filter(Boolean);
+  let nombre = '';
+  // MRZ del reverso: APELLIDO<APELLIDO<<NOMBRE<NOMBRE
+  const mrz = U.replace(/\s/g, '').match(/([A-Z]{2,}(?:<[A-Z]{2,})+)<<([A-Z]{2,}(?:<[A-Z]{2,})*)/);
+  if (mrz) nombre = (mrz[2] + ' ' + mrz[1]).replace(/</g, ' ').trim();
+  if (!nombre){
+    const i = lines.findIndex(l => /^NOMBRE\b/.test(LN(l).replace(/[^A-Z ]/g, '').trim()));
+    if (i >= 0){
+      const parts = [];
+      for (let j = i + 1; j < lines.length && parts.length < 3; j++){
+        const w = LN(lines[j]).replace(/[^A-Z ]/g, ' ').replace(/\s+/g, ' ').trim();
+        if (!w || /^(DOMICILIO|SEXO|CLAVE|CURP|FECHA|SECCION|VIGENCIA|ANO|ESTADO|MUNICIPIO|LOCALIDAD|EMISION|REGISTRO)/.test(w)) break;
+        parts.push(w);
+      }
+      if (parts.length >= 2) nombre = parts.join(' ');
+    }
+  }
+  let fecha = (U.match(/FECHA DE NACIMIENTO\s*:?\s*(\d{2}\/\d{2}\/\d{4})/) || [])[1] || '';
+  let curpRaw = (U.replace(/(\b[A-Z]{4}\d{6}[HM][A-Z]{5})\s?([A-Z0-9])\s?([0-9OIL])\b/, '$1$2$3').match(CURP_RE) || [])[0];
+  if (!curpRaw){
+    // El OCR a veces confunde los dígitos de la fecha dentro de la CURP: se reconstruyen con la fecha de nacimiento de la INE
+    const m = U.match(/CURP\s*:?\s*([A-Z]{4})([A-Z0-9]{5,8}?)([HM][A-Z]{5}[A-Z0-9][0-9A-Z])\b/);
+    if (m && fecha){ const [dd, mm, yyyy] = fecha.split('/'); curpRaw = m[1] + yyyy.slice(2) + mm + dd + m[3]; }
+  }
+  const curp = curpRaw ? fixCurp(curpRaw) : '';
+  if (!fecha && curp){ const yy = +curp.slice(4, 6), mm = curp.slice(6, 8), dd = curp.slice(8, 10); fecha = `${dd}/${mm}/${(/^\d$/.test(curp[16]) ? 1900 : 2000) + yy}`; }
+  const cond = nombre || '(NOMBRE NO LEÍDO EN LA INE)';
+  const out = [];
+  const put = (key, v, ev) => { if (v && BYKEY[key]) out.push({id: BYKEY[key].id, valor: v, evidencia: 'INE › ' + ev, condicion_nombre: cond, soloSiVacio: 1}); };
+  put('CURP', curp, 'CURP');
+  put('FECHA DE NACIMIENTO', fecha, curp && !/FECHA DE NACIMIENTO/.test(U) ? 'fecha de nacimiento (de la CURP)' : 'Fecha de nacimiento');
+  return {campos: out, nombre, curp};
+}
+
 /* --- proceso local de un archivo --- */
 async function localRead(file, setMsg){
   const ext = (file.name.split('.').pop() || '').toLowerCase();
@@ -1436,7 +1473,7 @@ async function localRead(file, setMsg){
     else if (kind === 'admin'){ const a = parseAdmin(t); res.campos.push(...a.campos); obs.push(`Administración de la sociedad: ${a.n} integrante(s)` + (a.n > ADM.length ? ` (el formato solo tiene ${ADM.length} renglones)` : '')); }
     else if (kind === 'capital'){ const c = parseCapital(t); res.campos.push(...c.campos); obs.push(`Capital social: ${c.n} accionista(s)` + (c.n > CAP_SLOTS.length ? ` (el formato solo tiene ${CAP_SLOTS.length} renglones)` : '')); }
     else if (kind === 'cotizador'){ res.campos.push(...parseCotizador(t)); obs.push('Cotizador'); }
-    else if (/IDMEX|INSTITUTO NACIONAL ELECTORAL|CREDENCIAL PARA VOTAR/.test(LK(t))) obs.push('INE (no se usa en el formato)');
+    else if (/IDMEX|INSTITUTO NACIONAL ELECTORAL|CREDENCIAL PARA VOTAR|CLAVE DE ELECTOR/.test(LK(t))){ const e = parseINE(t); res.campos.push(...e.campos); obs.push(`INE${e.nombre ? ' de ' + e.nombre : ''}: respaldo de CURP y fecha de nacimiento del representante`); }
     else if (t.trim()) { const a = parseAnexo(t); if (a.length){ res.campos.push(...a); obs.push('Anexo (OCR)'); } else obs.push('Imagen sin datos reconocibles'); }
     return kind;
   };
@@ -1474,8 +1511,8 @@ async function localRead(file, setMsg){
     obs.push(`${n} página(s)` + (scanned.length ? `, ${scanned.length} escaneada(s); OCR en ${ocrHechas}` : ', todas con texto'));
     if (/IDMEX|INSTITUTO NACIONAL ELECTORAL|CREDENCIAL PARA VOTAR|CLAVE DE ELECTOR/.test(LK(full)) && !/REFERENCIA\s*\d/.test(LK(full))){
       res.tipo_documento = 'INE';
-      const curp = (LN(full).replace(/\s/g, ' ').match(CURP_RE) || [])[0];
-      obs.push('Se reconoció como INE' + (curp ? ` (CURP ${fixCurp(curp)})` : '') + '. Con tus reglas actuales la INE no llena ningún campo.');
+      const e = parseINE(full); res.campos.push(...e.campos);
+      obs.push(`INE${e.nombre ? ' de ' + e.nombre : ''}: respaldo de CURP y fecha de nacimiento del representante (solo si están vacíos y el nombre coincide)`);
     }
     else if (/CONSTANCIA DE SITUACION FISCAL/.test(LK(full))){ res.tipo_documento = 'CSF'; res.campos.push(...parseCSF(full)); }
     else {
