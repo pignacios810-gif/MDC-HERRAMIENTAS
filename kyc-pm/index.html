@@ -161,7 +161,7 @@ section.sec{background:var(--surface);border:1px solid var(--line);border-radius
 </style>
 
 <header class="top"><div class="top-in wrap">
-  <div class="brand"><b>KYC Persona Moral</b><span>Plantilla con datos fijos · versión 16/11/2026 21:30</span></div>
+  <div class="brand"><b>KYC Persona Moral</b><span>Plantilla con datos fijos · versión 16/11/2026 21:35</span></div>
   <div class="exp"><label for="expName">Expediente</label><input id="expName" placeholder="Ej. NOMBRE DE LA EMPRESA F/0394" autocomplete="off"></div>
   <div class="meter" title="Campos editables con valor"><div class="bar"><i id="barFill"></i></div><span id="meterTxt">0 / 0</span><small>editables</small></div>
   <div class="actions">
@@ -737,7 +737,17 @@ function toggleLock(d){
 
 /* ---------- aplicar lo leído ---------- */
 const nameKey = s => norm(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Z ]/g,' ').split(' ').filter(Boolean).sort().join(' ');
-function sameName(a, b){ return !!a && !!b && nameKey(a) === nameKey(b); }
+// Igual, o casi igual por errores de OCR: mismas palabras, cada una con a lo más 1 letra distinta (2 si es larga)
+function lev(a, b){ const m = a.length, n = b.length; if (Math.abs(m - n) > 2) return 9; let prev = Array.from({length: n + 1}, (_, j) => j);
+  for (let i = 1; i <= m; i++){ const cur = [i]; for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); prev = cur; } return prev[n]; }
+function sameName(a, b){
+  if (!a || !b) return false;
+  const A = nameKey(a), B = nameKey(b); if (A === B) return true;
+  const ta = A.split(' '), tb = B.split(' ');
+  if (ta.length !== tb.length || ta.length < 2) return false;
+  const used = new Set();
+  return ta.every(x => { const k = tb.findIndex((y, i) => !used.has(i) && lev(x, y) <= (Math.max(x.length, y.length) > 6 ? 2 : 1)); if (k < 0) return false; used.add(k); return true; });
+}
 // Aplica valores que dependen de que el nombre del documento sea el del representante
 function resolvePending(){
   const rep = BYID[REP_ID]; const rn = hasValue(rep) ? cur(rep) : '';
