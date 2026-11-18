@@ -155,7 +155,7 @@ button{cursor:pointer}
   <p class="priv"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg><span>Los archivos se leen dentro de tu navegador. No se suben ni se guardan en ningún servidor.</span></p>
 </div></section>
 <header class="top"><div class="top-in">
-  <div class="brand" title="Versión de la herramienta"><b>KYC Persona Física · F/0394</b><span>Sofimex, Institución de Garantías · Fiduciario · <b class="ver">Versión 16-nov-2026 (66)</b></span></div>
+  <div class="brand" title="Versión de la herramienta"><b>KYC Persona Física · F/0394</b><span>Sofimex, Institución de Garantías · Fiduciario · <b class="ver">Versión 17-nov-2026 (67)</b></span></div>
   <div class="meter"><div class="bar"><i id="barFill"></i></div><span id="meterTxt">0 de 0 campos</span></div>
   <div class="actions">
     <button class="btn primary" id="btnPdf" type="button">Descargar PDF lleno</button>
@@ -180,6 +180,7 @@ button{cursor:pointer}
       <div class="engine"><span class="dot" id="engDot"></span><span id="engTxt">Preparando lector…</span></div>
       <div class="legend"><span><i class="sw a"></i>Llenado desde documento</span><span><i class="sw l"></i>Dato fijo</span></div>
     </section>
+    <section class="panel" id="pmPanel" hidden></section>
     <section class="panel">
       <h3>Archivos procesados <span id="fileCount"></span></h3>
       <ul class="files" id="files"><li class="empty">Aún no has cargado archivos.</li></ul>
@@ -456,6 +457,7 @@ const NEED = [
   ["ine", "INE de la titular, frente y reverso", true, "Llena nombre(s), apellidos, fecha de nacimiento y el número de identificación (9 dígitos tras IDMEX del reverso)."],
   ["csf", "Constancia de Situación Fiscal de la titular", true, "Llena RFC y CURP (solo si está a nombre de la titular). Respaldo del domicilio fiscal."],
   ["vp", "Cotizador con renglones VP / Valor Pagaré, Monto y Ventas mensuales", true, "Puede venir en el mismo Excel PLANTILLA. Llena valor de los derechos al cobro, importe máximo, monto de la operación y movimientos mensuales."],
+  ["pm", "Opcional: KYC Persona Moral ya lleno (PDF)", false, "Toma los datos de la empresa y de los accionistas con 15 % o más de las acciones; eliges de cuál es este KYC. Para el representante legal también CURP, estado civil, teléfonos y correo."],
   ["", "Opcional: documentos del familiar PPE, comprobante de domicilio", false, "Sección VIII y respaldo de domicilio si el Excel no lo trae."]
 ];
 function renderNeed() {
@@ -466,7 +468,7 @@ function renderNeed() {
     return `<li><b>${esc(t)}</b><span class="tag ${ok ? "ok" : req ? "req" : "opt"}">${ok ? "Recibido" : req ? "Obligatorio" : "Opcional"}</span><span class="why">${ok ? "De " + esc(st.docs[k]) + ". " : ""}${esc(why)}</span></li>`; }).join("");
 }
 function renderSide() {
-  renderNeed();
+  renderNeed(); renderPM();
   // archivos
   const fl = $("files");
   $("fileCount").textContent = st.files.length ? st.files.length : "";
@@ -1362,6 +1364,163 @@ async function ocrLocal(images, onProg) {
   return txt;
 }
 
+/* ---------- KYC Persona Moral (PDF ya lleno) → KYC PF de los accionistas con 15 % o más ---------- */
+const PM_MIN = 15;
+const PM_SOCIOS = ["6", "0", "1", "2", "3", "4", "5"];          // renglones de la tabla VII (Composición del capital social)
+const PM_FILE = "KYC PM";                                     // origen de los datos de la empresa
+const PM_TAG = s => "KYC PM · " + s;                           // origen de los datos del accionista elegido
+const pmKey = s => normKeep(String(s || "")).replace(/[^A-Z0-9]+/g, " ").trim();
+const pmPct = v => { const t = String(v || "").replace(",", "."); const n = parseFloat(t.replace(/[^\d.]/g, "")); if (!isFinite(n)) return null; return !/%/.test(t) && n > 0 && n <= 1 ? n * 100 : n; };
+// Lee los campos del PDF del KYC Persona Moral (formato Sofimex). Si el PDF no es ese formato, regresa null
+async function leerKycPM(file) {
+  await load(LIBS.pdflib);
+  const L = window.PDFLib;
+  let form;
+  try { form = (await L.PDFDocument.load(await file.arrayBuffer(), { ignoreEncryption: true, updateMetadata: false })).getForm(); } catch (e) { return null; }
+  const F = {};
+  for (const f of form.getFields()) {
+    let v = "";
+    try {
+      if (f instanceof L.PDFTextField) v = f.getText() || "";
+      else if (f instanceof L.PDFRadioGroup) { const V = f.acroField.dict.get(L.PDFName.of("V")); v = V ? String(V).replace(/^\//, "") : ""; }   // valor exportado (/0, /1…), no el texto de /Opt
+      else continue;
+    } catch (e) { continue; }
+    F[pmKey(f.getName())] = String(v);
+  }
+  const g = k => { const v = norm(F[pmKey(k)] || "").toUpperCase(); return /^(N\/?A|NO APLICA|INE\s*-\s*N\/?A|-+)$/.test(v) ? "" : v; };
+  if (!(pmKey("DENOMINACIÓN O RAZÓN SOCIAL") in F) || !(pmKey("Nombre TB 1.6") in F)) return null;
+  const r = k => String(F[pmKey(k)] || "").replace(/^\//, "");
+  const cargos = [];
+  [["NOMBRE DEL ADMINISTRADOR  MIEMBRO DEL CONSEJO DE ADMINISTRACIÓN", "PUESTO O CARGO DEL CONSEJO"], ["undefined_14", "undefined_18"], ["undefined_15", "undefined_19"], ["undefined_16", "undefined_20"], ["undefined_17", "undefined_21"],
+   ["NOMBRE COMPLETO", "PUESTO O CARGO"], ["undefined_26", "undefined_30"], ["undefined_27", "undefined_31"], ["undefined_28", "undefined_32"], ["undefined_29", "undefined_33"]]
+    .forEach(([n, c]) => { if (g(n) && g(c)) cargos.push([g(n), g(c)]); });
+  return {
+    razon: g("DENOMINACIÓN O RAZÓN SOCIAL"),
+    rl: { nombre: g("NOMBRE  DEL REPRESENTANTE O REPRESENTANTRES LEGALES"), rfc: g("RFC CON HOMOCLAVE"), curp: g("CURP"), fn: g("FECHA DE NACIMIENTO"),
+      cel: g("NÚMERO CELULAR"), fijo: g("NÚMERO TELÉFONO FIJO"), cargo: g("CARGO QUE DESEMPEÑA EN LA EMPRESA"), correo: g("CORREO ELECTRÓNICO"),
+      ec: g("ESTADO CIVIL ADJUNTAR ACTA DE MATRIMONIO"), reg: g("RÉGIMEN CONYUGAL"), ine: g("NOMBRE Y NÚMERO  DE LA IDENTIFICACIÓN  AUTORIDAD QUE LA EMITE"),
+      cony: g("NOMBRE COMPLETO DEL CÓNYUGE CONCUBINA O CONCUBINARIO"), conyIne: g("NOMBRE Y NÚMERO  DE LA IDENTIFICACIÓN  AUTORIDAD QUE LA EMITE_2") },
+    oficina: g("OFICINA 1"), correo: g("CORREO ELECTRÓNICO_2"), fines: g("FINES QUE PPRETENDE DAR AL"),
+    vp: g("VALOR_3"), mensual: g("MONTO APROXIMADO DE MOVIMIENTOS MENSUALES"), ejecutivo: g("NOMBRE_3"),
+    rad: { cliente: r("GRUPO SF 1"), referido: r("GRUPO SF 2"), propios: r("GRUPO SF 3"), proveedor: r("GRUPO SF 4"), pep: r("GRUPO SF 5XX11"), pepFam: r("GRUPO SF 5"), divPat: r("GRUPO SF 77"), divOp: r("GRUPO SF 78"), mov: r("GRUPO SF 523") },
+    cargos,
+    socios: PM_SOCIOS.map(s => ({ nombre: g(`Nombre TB 1.${s}`), pct: pmPct(F[pmKey(`PARTICI 1.0.${s}`)]), rfc: g(`RFC TB 1.0.${s}`).replace(/[^A-ZÑ&0-9]/g, ""), fn: g(`FECH NAC 1.0.${s}`), paisNac: g(`PAIS CREAC 1.0.${s}`), paisRes: g(`PAIS PROCC 1.0.${s}`) })).filter(s => s.nombre)
+  };
+}
+// Nombre(s) y apellidos a partir del nombre completo (los dos últimos apellidos, con sus partículas: DE LA, DEL…)
+function partirNombre(full) {
+  const P = ["DE", "DEL", "LA", "LAS", "LOS", "Y", "MC", "MAC", "VAN", "VON", "DA", "DI", "SAN"];
+  const w = norm(full).toUpperCase().split(" ").filter(Boolean);
+  const take = () => { if (!w.length) return ""; const out = [w.pop()]; while (w.length > 1 && P.includes(w[w.length - 1])) out.unshift(w.pop()); return out.join(" "); };
+  if (w.length < 3) return [w[0] || "", w[1] || "", ""];
+  const am = take(), ap = take();
+  return [w.join(" "), ap, am];
+}
+const pmEsRL = (pm, s) => !!pm.rl.nombre && ((s.rfc && pm.rl.rfc && s.rfc.slice(0, 10) === pm.rl.rfc.slice(0, 10)) || cmp(s.nombre) === cmp(pm.rl.nombre));
+const pmEsPF = s => !s.rfc || s.rfc.length === 13;
+const pmElegibles = pm => pm.socios.map((s, i) => ({ ...s, i })).filter(s => s.pct !== null && s.pct >= PM_MIN);
+// Sí/No del KYC PM (0 = Sí, 1 = No) → valor del grupo en este formato
+const pmSN = (v, si, no) => v === "0" ? si : v === "1" ? no : null;
+function cargarKycPM(pm, rec) {
+  st.pm = { file: rec.name, data: pm, sel: null, unl: [] };
+  st.docs.pm = rec.name;
+  // Datos de la empresa (sirven para el KYC de cualquier accionista)
+  const found = {}, put = (k, v, ev) => { if (v) found[k] = { value: v, ev: "KYC PM › " + ev, conf: "alta" }; };
+  put("NOMBRE DE LA EMPRESA DONDE LABORA", pm.razon, "Denominación o razón social");
+  put("OFICINA 1", pm.oficina, "IV Datos de contacto › Oficina 1");
+  put("CORREO ELECTRÓNICO", pm.correo, "IV Datos de contacto › Correo electrónico");
+  put("NOMBRE Y FIRMA_2", pm.ejecutivo, "Nombre del ejecutivo que entrevista");
+  const R = pm.rad;
+  put("GRUPO 4", pmSN(R.propios, "/1", "/0"), "VI Recursos propios y de fuentes lícitas");
+  put("GRUPO 5", pmSN(R.proveedor, "/1", "/0"), "X Proveedor de recursos");
+  put("GRUPO 6", pmSN(R.pep, "/1", "/0"), "XI ¿Socios, administrador o apoderados son PEP?");
+  put("GRUPO 6AB", pmSN(R.pepFam, "/0", "/1"), "XI ¿Familiar PEP?");
+  put("GRUPO 8", pmSN(R.cliente, "/1", "/0"), "V ¿Ha sido cliente de Sofimex?");
+  put("GRUPO 9", pmSN(R.referido, "/1", "/0"), "V ¿Fue referenciado?");
+  put("GRUPO 12", pmSN(R.divPat, "/1", "/0"), "XIV Divisas en patrimonio fideicomitido");
+  put("GRUPO 13", pmSN(R.divOp, "/1", "/0"), "XIV Divisas en operaciones");
+  put("GRUPO 9AB", { "0": "/3", "1": "/4", "2": "/5" }[R.mov] || null, "XV Transaccionalidad esperada");
+  const { applied, queued } = merge(found, PM_FILE);
+  // Montos e ID Anticipa con las reglas de esta herramienta (Monto de la operación e Importe máximo = VP)
+  const rules = {};
+  const id = (pm.fines.match(/#\s*(\d+)/) || [])[1]; if (id) rules.ID_ANTICIPA = { value: id, ev: "KYC PM › Fines #" + id };
+  const vp = toMoney(pm.vp); if (vp) ["VALOR_3", "IMPORTE MÁXIMO", "MONTO DE LA OPERACIÓN  CONTRATO"].forEach(k => rules[k] = { value: vp, ev: "KYC PM › Derechos al cobro (VP) " + vp });
+  const me = toMoney(pm.mensual); if (me) rules["MONTO APROXIMADO DE MOVIMIENTOS MENSUALES"] = { value: me, ev: "KYC PM › Monto aproximado de movimientos mensuales " + me };
+  const ruled = applyRules(rules, PM_FILE);
+  const el = pmElegibles(pm), pf = el.filter(pmEsPF);
+  if (pf.length === 1) aplicarSocio(pf[0].i, true);
+  derive();
+  const quien = !el.length ? `ningún accionista tiene ${PM_MIN} % o más` : pf.length === 1 ? `KYC de ${pf[0].nombre} (${pf[0].pct} %)` : `${pf.length} accionistas con ${PM_MIN} % o más: elige de quién es este KYC en el panel «KYC Persona Moral»`;
+  upd(rec, "done", `KYC Persona Moral de ${pm.razon || "la empresa"} · ${quien} · ${applied + ruled} datos de la empresa${queued ? " · " + queued + " por revisar" : ""}`);
+  render();
+  if (pf.length > 1) { toast(`El KYC PM trae ${pf.length} accionistas con ${PM_MIN} % o más. Elige de quién es este KYC.`); const p = $("pmPanel"); if (p) p.scrollIntoView({ behavior: "smooth", block: "center" }); }
+  else toast(`KYC Persona Moral: ${quien}.`);
+}
+// Quita lo que se llenó con el accionista elegido antes (para cambiar de accionista sin mezclar datos)
+function limpiarSocioPM() {
+  if (!st.pm) return;
+  for (const k of Object.keys(st.src)) { const f0 = st.src[k] && st.src[k].file; if (f0 && (f0.startsWith("KYC PM · ") || f0 === "CURP" || f0 === "Datos generales")) { delete st.v[k]; delete st.src[k]; } }
+  for (const k of st.pm.unl || []) { delete st.unl[k]; delete st.v[k]; delete st.src[k]; }
+  st.pm.unl = [];
+  st.sugs = st.sugs.filter(s => !String(s.file || "").startsWith("KYC PM · "));
+}
+function aplicarSocio(i, silent) {
+  const pm = st.pm && st.pm.data, s = pm && pm.socios[i]; if (!s) return;
+  limpiarSocioPM();
+  st.pm.sel = i;
+  const file = PM_TAG(s.nombre), rl = pmEsRL(pm, s);
+  const [nom, ap, am] = partirNombre(s.nombre);
+  const found = {}, put = (k, v, ev) => { if (v) found[k] = { value: v, ev: "KYC PM › " + ev, conf: "alta" }; };
+  put("NOMBRES", nom, "VII Capital social › Nombre");
+  put("APELLIDO PATERNO", ap, "VII Capital social › Nombre");
+  put("APELLIDO MATERNO", am, "VII Capital social › Nombre");
+  put("RFC Homoclave ID Fiscal 3", s.rfc, "VII Capital social › RFC");
+  put("FECHA DE NACIMIENTO", s.fn || (rl ? pm.rl.fn : ""), "VII Capital social › Fecha de nacimiento");
+  put("PAÍS DE NACIMIENTO ORIGEN", s.paisNac, "VII Capital social › País de creación");
+  put("PAÍS O JURISDICCIÓN  DE RESIDENCIA", s.paisRes, "VII Capital social › País de residencia");
+  if (rl) {
+    put("CURP O SU EQUIVALENTE", pm.rl.curp, "II Representante legal › CURP");
+    put("ESTADO CIVIL", pm.rl.ec, "II Representante legal › Estado civil");
+    put("RÉGIMEN MATRIMONIAL", pm.rl.reg, "II Representante legal › Régimen conyugal");
+    put("NOMBRE COMPLETO DEL CÓNYUGE CONCUBINA O CONCUBINARIO", pm.rl.cony, "II Representante legal › Cónyuge");
+    put("NOMBRE Y NÚMERO DE LA IDENTIFICACIÓN OFICIAL  AUTORIDAD QUE LA EMITE_2", pm.rl.conyIne, "II Representante legal › Identificación del cónyuge");
+    put("CELULAR", pm.rl.cel, "II Representante legal › Número celular");
+    put("PARTICULAR 1", pm.rl.fijo, "II Representante legal › Teléfono fijo");
+    put("CORREO ELECTRÓNICO PERSONAL", pm.rl.correo, "II Representante legal › Correo electrónico");
+  }
+  merge(found, file);
+  // La INE del titular solo se toma de su credencial (regla de la herramienta): el número del KYC PM queda por revisar
+  if (rl && pm.rl.ine) { const d = (pm.rl.ine.replace(/\s/g, "").match(/(\d{9})\d?$/) || [])[1]; const k = "NOMBRE Y NÚMERO DE LA IDENTIFICACIÓN OFICIAL  AUTORIDAD QUE LA EMITE"; if (d && cmp(st.v[k] || "") !== d) queue(k, d, { file, ev: "KYC PM › II Representante legal › " + pm.rl.ine, conf: "media" }, "Viene del KYC PM; la regla pide tomarlo de la INE de la titular"); }
+  // Datos que el formato trae fijos pero que el KYC PM sí define para este accionista
+  const fija = (k, v, ev) => { const f = BYK[k]; if (!f || !v) return; const cur0 = f.type === "radio" ? (st.v[k] ?? f.fx ?? "") : val(f); if (cmp(cur0) === cmp(v) && !st.v[k]) return; st.unl[k] = true; st.pm.unl.push(k); st.v[k] = v; st.src[k] = { file, ev: "KYC PM › " + ev, conf: "alta", n: 1 }; st.sugs = st.sugs.filter(x => x.k !== k); };
+  const cargo = (pm.cargos.find(([n]) => cmp(n) === cmp(s.nombre)) || [])[1] || (rl ? pm.rl.cargo : "");
+  const pctTxt = (Math.round(s.pct * 100) / 100).toFixed(2) + "%";
+  fija("GRUPO 7", "/1", "VII Capital social: accionista de " + pm.razon);
+  fija("CUAL", pm.razon, "Denominación o razón social");
+  fija("SI SU RESPUESTA FUE SI CUAL ES SU RELACIÓN", "ACCIONISTA " + pctTxt + (cargo ? " Y " + cargo : ""), "VII Capital social" + (cargo ? " y VIII/IX cargos" : ""));
+  if (s.pct < 25) fija("GRUPO SELECC", "/4", "Participación de " + pctTxt + " (más de 15 % y menos de 25 %)");
+  if (rl) { const ci = curpInfo(pm.rl.curp); if (ci) fija("GRUPO 1", ci.sexo === "H" ? "/0" : "/1", "Sexo en la CURP"); }
+  derive(); save(); render();
+  if (!silent) toast(`KYC de ${s.nombre} (${pctTxt}). Sube su INE y su constancia fiscal para completar domicilios e identificación.`);
+}
+function renderPM() {
+  const p = $("pmPanel"); if (!p) return;
+  const pm = st.pm && st.pm.data;
+  p.hidden = !pm; if (!pm) return;
+  const el = pmElegibles(pm), otros = pm.socios.filter(s => !(s.pct !== null && s.pct >= PM_MIN));
+  const rows = el.map(s => {
+    const pf = pmEsPF(s), on = st.pm.sel === s.i;
+    return `<li class="file"><span class="nm">${esc(s.nombre)}${pmEsRL(pm, s) ? " · RL" : ""}</span><span class="st ${on ? "done" : "wait"}">${(Math.round(s.pct * 100) / 100)} %</span>
+      <span class="ds">${esc(s.rfc || "Sin RFC")}${s.fn ? " · " + esc(s.fn) : ""}${pf ? "" : " · Persona moral: no lleva KYC de persona física"}</span>
+      ${pf ? `<span class="ds"><button type="button" class="btn sm ${on ? "primary" : ""}" data-socio="${s.i}" aria-pressed="${on}">${on ? "KYC de este accionista" : "Llenar KYC de este accionista"}</button></span>` : ""}</li>`;
+  }).join("");
+  p.innerHTML = `<h3>KYC Persona Moral</h3><p class="empty" style="margin-bottom:8px">${esc(pm.razon)} · accionistas con ${PM_MIN} % o más de las acciones${el.length ? ". Elige de quién es este KYC:" : ""}</p>
+    <ul class="files">${rows || `<li class="empty">Ningún accionista tiene ${PM_MIN} % o más.</li>`}</ul>
+    ${otros.length ? `<p class="empty" style="margin-top:8px">Con menos de ${PM_MIN} %: ${esc(otros.map(s => s.nombre + (s.pct !== null ? " (" + s.pct + " %)" : "")).join(", "))}.</p>` : ""}
+    ${el.filter(pmEsPF).length > 1 ? `<p class="empty" style="margin-top:8px">Un KYC por accionista: descarga el PDF de uno y luego elige al siguiente.</p>` : ""}`;
+}
+document.addEventListener("click", e => { const t = e.target.closest("[data-socio]"); if (t) aplicarSocio(+t.dataset.socio); });
+
 /* ---------- Cola de archivos ---------- */
 const queueFiles = []; let busy = false;
 function addFiles(list) {
@@ -1377,6 +1536,8 @@ function upd(rec, status, desc) { rec.status = status; rec.desc = desc; save(); 
 async function processFile(file, rec) {
   try {
     upd(rec, "run", "Leyendo el contenido…");
+    // KYC Persona Moral ya lleno: se toman los datos de la empresa y de los accionistas con 15 % o más
+    if (/\.pdf$/i.test(rec.name)) { let pm = null; try { pm = await leerKycPM(file); } catch (e) { pm = null; } if (pm) { cargarKycPM(pm, rec); return; } }
     const ex = await extract(file, rec.name);
     let text = ex.text.slice(0, 150000);
     let found = {}, info = "", trans = "", ocrRules = "", claudeErr = "", rotulos = {}, persona = "";
@@ -1644,6 +1805,7 @@ derive(); save();
   items.push(`<li><span class="ic ok">✓</span><span>Fuente principal de ingresos → siempre Negocio propio</span></li>`);
   items.push(`<li><span class="ic ok">✓</span><span>Nacionalidad → MEXICANA si es mujer, MEXICANO si es hombre</span></li>`);
   items.push(`<li><span class="ic ok">✓</span><span>RFC y CURP → solo de documentos a nombre de la titular</span></li>`);
+  items.push(`<li><span class="ic ok">✓</span><span>KYC Persona Moral (PDF) → datos de la empresa y del accionista elegido (solo accionistas con 15 % o más)</span></li>`);
   items.push(`<li><span class="ic ok">✓</span><span>Todos los datos en MAYÚSCULAS</span></li>`);
   items.push(`<li><span class="ic ok">✓</span><span>Bloques DOMICILIO DEL CLIENTE FISCAL / DOMICILIO PARTICULAR → domicilios II.1 / II</span></li>`);
   $("rulesList").innerHTML = items.join("");
