@@ -178,7 +178,7 @@ section.sec{background:var(--surface);border:1px solid var(--line);border-radius
 </style>
 
 <header class="top"><div class="top-in wrap">
-  <div class="brand"><b>KYC Persona Moral</b><span>Plantilla con datos fijos · versión 18/11/2026 00:40</span></div>
+  <div class="brand"><b>KYC Persona Moral</b><span>Plantilla con datos fijos · versión 18/11/2026 11:45</span></div>
   <div class="exp"><label for="expName">Expediente</label><input id="expName" placeholder="Ej. NOMBRE DE LA EMPRESA F/0394" autocomplete="off"></div>
   <div class="meter" title="Campos editables con valor"><div class="bar"><i id="barFill"></i></div><span id="meterTxt">0 / 0</span><small>editables</small></div>
   <div class="actions">
@@ -1387,10 +1387,18 @@ function parseCSF(text){
   const a = lines.findIndex(l => /Actividades\s+Econ[oó]micas/i.test(l));
   if (a < 0) return [];
   let best = null;
-  for (let i = a + 1; i < Math.min(lines.length, a + 25); i++){
+  const FILA = /(?:^|\s)(\d{1,2})\s+([A-Za-zÁÉÍÓÚÑáéíóúñ][^\n]*?)\s+(\d{1,3})\s*%?\s+\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}/g;
+  const tabla = [];
+  for (let i = a + 1; i < Math.min(lines.length, a + 40); i++){
     if (/^(Reg[ií]menes|Obligaciones)/i.test(lines[i])) break;
-    const m = lines[i].match(/^\s*\d+\s+(.+?)\s+(\d{1,3})\s+\d{2}\/\d{2}\/\d{4}/);
-    if (m && (!best || +m[2] > best.p)) best = {t: m[1], p: +m[2]};
+    tabla.push(lines[i]);
+    const m = lines[i].match(/^\s*\d+\s+(.+?)\s+(\d{1,3})\s*%?\s+\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}/);
+    if (m && +m[2] <= 100 && (!best || +m[2] > best.p)) best = {t: m[1], p: +m[2]};
+  }
+  // Renglones partidos (la actividad ocupa dos líneas o el OCR separó las columnas): se lee la tabla como un solo texto
+  if (!best){
+    const junto = tabla.join(' ').replace(/^.*?Fecha\s+(?:de\s+)?Fin\s*/i, ' ');
+    for (const m of junto.matchAll(FILA)) if (+m[3] <= 100 && (!best || +m[3] > best.p)) best = {t: m[2].replace(/\s+/g, ' ').trim(), p: +m[3]};
   }
   if (!best) return [];
   return [{id: BYKEY['GIRO MERCANTIL ACTIVIDAD U OBJETO SOCIAL'].id, valor: best.t, evidencia: `CSF › Actividad económica (${best.p}%)`},
@@ -1796,7 +1804,30 @@ async function localRead(file, setMsg){
       const e = parseINE(full); res.campos.push(...e.campos);
       obs.push(`INE${e.nombre ? ' de ' + e.nombre : ''}: respaldo de CURP y fecha de nacimiento del representante (solo si están vacíos y el nombre coincide)`);
     }
-    else if (/CONSTANCIA DE SITUACION FISCAL/.test(LK(full))){ res.tipo_documento = 'CSF'; res.campos.push(...parseCSF(full)); }
+    else if (/CONSTANCIA DE SITUACION FISCAL/.test(LK(full))){
+      res.tipo_documento = 'CSF';
+      let c = parseCSF(full);
+      if (!c.length){
+        // Reportes «…_valid.pdf»: la constancia viene como imagen dentro de una página con texto; esas páginas pasan por OCR
+        const OPS = pdfjsLib.OPS, IMG_OPS = new Set([OPS.paintImageXObject, OPS.paintJpegXObject, OPS.paintInlineImageXObject, OPS.paintImageXObjectRepeat].filter(x => x !== undefined));
+        let extra = 0;
+        for (let i = 1; i <= n && !c.length && extra < 4; i++){
+          if (scanned.includes(i)) continue;
+          const pg = await pdf.getPage(i);
+          let foto = false; try { const ol = await pg.getOperatorList(); foto = ol.fnArray.some(f => IMG_OPS.has(f)); } catch(_){}
+          if (!foto) continue;
+          setMsg(`Página ${i} de ${n} trae la constancia como imagen: preparándola…`);
+          const vp = pg.getViewport({scale: 2.2});
+          const cv = document.createElement('canvas'); cv.width = vp.width; cv.height = vp.height;
+          await pg.render({canvasContext: cv.getContext('2d'), viewport: vp}).promise;
+          const img = await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.85));
+          full += '\n' + await ocrText(img, p => setMsg(`Página ${i} de ${n} (constancia en imagen): OCR ${Math.round(p * 100)}%`));
+          extra++; c = parseCSF(full);
+        }
+        if (extra) obs.push(`constancia en imagen: OCR en ${extra} página(s)`);
+      }
+      res.campos.push(...c);
+    }
     else {
       res.tipo_documento = 'ARCHIVO PDF ANEXO';
       // Primero por posición (columnas); lo que falte, por renglón de texto (anexos escaneados o con "Rótulo: valor")
