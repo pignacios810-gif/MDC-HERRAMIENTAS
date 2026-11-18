@@ -178,7 +178,7 @@ section.sec{background:var(--surface);border:1px solid var(--line);border-radius
 </style>
 
 <header class="top"><div class="top-in wrap">
-  <div class="brand"><b>KYC Persona Moral</b><span>Plantilla con datos fijos · versión 17/11/2026 23:30</span></div>
+  <div class="brand"><b>KYC Persona Moral</b><span>Plantilla con datos fijos · versión 17/11/2026 23:55</span></div>
   <div class="exp"><label for="expName">Expediente</label><input id="expName" placeholder="Ej. NOMBRE DE LA EMPRESA F/0394" autocomplete="off"></div>
   <div class="meter" title="Campos editables con valor"><div class="bar"><i id="barFill"></i></div><span id="meterTxt">0 / 0</span><small>editables</small></div>
   <div class="actions">
@@ -1997,8 +1997,6 @@ function pfDatos(s){
   const [nom, ap, am] = pfPartirNombre(s.nombre);
   const nac = pmv('NACIONALIDAD_2');
   const mex = !rl || !nac || /^MEXICAN/.test(nac);
-  const pctTxt = (Math.round(s.pct * 100) / 100).toFixed(2) + '%';
-  const cargo = (ADM.map(([n, c]) => [hasValue(n) ? cur(n) : '', hasValue(c) ? cur(c) : '']).find(([n, c]) => n && c && sameName(n, s.nombre)) || [])[1] || (rl ? pmv('CARGO QUE DESEMPEÑA EN LA EMPRESA') : '');
   const ine = rl ? (pmv('NOMBRE Y NÚMERO  DE LA IDENTIFICACIÓN  AUTORIDAD QUE LA EMITE').replace(/\s/g, '').match(/(\d{9})\d?$/) || [])[1] || '' : '';
   const ineC = rl ? (pmv('NOMBRE Y NÚMERO  DE LA IDENTIFICACIÓN  AUTORIDAD QUE LA EMITE_2').replace(/\s/g, '').match(/(\d{9})\d?$/) || [])[1] || '' : '';
   const vp = pmv('VALOR_3'), id = (FINES && (cur(FINES) || FINES.tplDefault)) || '';
@@ -2011,7 +2009,6 @@ function pfDatos(s){
     'PAÍS DE NACIMIENTO ORIGEN': s.paisNac || (curp ? 'MÉXICO' : ''),
     'RFC Homoclave ID Fiscal 3': s.rfc,
     'CURP O SU EQUIVALENTE': curp,
-    'PAÍS O JURISDICCIÓN  DE RESIDENCIA': s.paisRes,
     'NOMBRE DE LA EMPRESA DONDE LABORA': pmv('DENOMINACIÓN O RAZÓN SOCIAL'),
     'NOMBRE Y NÚMERO DE LA IDENTIFICACIÓN OFICIAL  AUTORIDAD QUE LA EMITE': ine ? 'INE - ' + ine : '',
     'ESTADO CIVIL': rl ? pmv('ESTADO CIVIL ADJUNTAR ACTA DE MATRIMONIO') : '',
@@ -2023,8 +2020,6 @@ function pfDatos(s){
     'CELULAR': rl ? pmv('NÚMERO CELULAR') : '',
     'CORREO ELECTRÓNICO PERSONAL': rl ? pmv('CORREO ELECTRÓNICO') : '',
     'CORREO ELECTRÓNICO': pmv('CORREO ELECTRÓNICO_2'),
-    'CUAL': pmv('DENOMINACIÓN O RAZÓN SOCIAL'),
-    'SI SU RESPUESTA FUE SI CUAL ES SU RELACIÓN': 'ACCIONISTA ' + pctTxt + (cargo ? ' Y ' + cargo : ''),
     'IX FINES QUE PRETENDE DAR AL FIDE': id ? PF_FINES.replace('{N}', id) : '',
     'VALOR_3': vp, 'IMPORTE MÁXIMO': vp, 'MONTO DE LA OPERACIÓN  CONTRATO': vp,
     'MONTO APROXIMADO DE MOVIMIENTOS MENSUALES': pmv('MONTO APROXIMADO DE MOVIMIENTOS MENSUALES'),
@@ -2042,9 +2037,10 @@ function pfDatos(s){
     if ((t['CALLE' + suf] || t['C POSTAL' + suf]) && !t['PAÍS' + suf]) t['PAÍS' + suf] = 'MÉXICO';
   }
   // Radios del formato PF (el resto de las respuestas se quedan como las trae la plantilla PF)
-  const r = { 'GRUPO 7': '/1' };
+  // Datos fijos del KYC PF (participante, ocupación, residencia, apoderado, relaciones, nivel de control, patrimonio,
+  // divisas y transaccionalidad): se quedan como los trae su plantilla. Solo el género sale de la CURP o de lo que elijas.
+  const r = {};
   if (gen) r['GRUPO 1'] = gen === 'M' ? '/0' : '/1';
-  if (s.pct < 25) r['GRUPO SELECC'] = '/4';
   return { t, r, rl, gen };
 }
 async function pfPdf(s){
@@ -2087,7 +2083,7 @@ async function pfDescargar(i){
 const PF_INE = ['NOMBRE Y NÚMERO DE LA IDENTIFICACIÓN OFICIAL  AUTORIDAD QUE LA EMITE', 'NOMBRE Y NÚMERO DE LA IDENTIFICACIÓN OFICIAL  AUTORIDAD QUE LA EMITE_2'];
 const PF_DOM = suf => [['CALLE' + suf, 'Calle'], ['NÚM EXTERIOR' + suf, 'Núm. exterior'], ['NÚM INTERIOR' + suf, 'Núm. interior (o S/N)'], ['COLONIA' + suf, 'Colonia'], ['C POSTAL' + suf, 'C.P.'], ['AÑOS RESIDENCIA' + suf, 'Años de residencia'], ['ALCALDÍA O MUNICIPIO' + suf, 'Alcaldía o municipio'], ['CIUDAD O POBLACIÓN' + suf, 'Ciudad o población'], ['ENTIDAD FEDERATIVA' + suf, 'Entidad federativa'], ['PAÍS' + suf, 'País']];
 const PF_CAMPOS = [
-  ['Identificación', [['CURP O SU EQUIVALENTE', 'CURP'], ['NOMBRE Y NÚMERO DE LA IDENTIFICACIÓN OFICIAL  AUTORIDAD QUE LA EMITE', 'INE (9 dígitos tras IDMEX)'], ['FECHA DE NACIMIENTO', 'Fecha de nacimiento'], ['ENTIDAD FEDERATIVA DE NACIMIENTO', 'Entidad de nacimiento'], ['NÚMERO DE SERIE DE LA FIRMA ELECTRÓNICA AVANZADA 2', 'No. de serie de la e.firma']]],
+  ['Identificación', [['CURP O SU EQUIVALENTE', 'CURP'], ['NOMBRE Y NÚMERO DE LA IDENTIFICACIÓN OFICIAL  AUTORIDAD QUE LA EMITE', 'INE (9 dígitos tras IDMEX)'], ['FECHA DE NACIMIENTO', 'Fecha de nacimiento'], ['ENTIDAD FEDERATIVA DE NACIMIENTO', 'Entidad de nacimiento']]],
   ['Estado civil', [['ESTADO CIVIL', 'Estado civil'], ['RÉGIMEN MATRIMONIAL', 'Régimen matrimonial'], ['NOMBRE COMPLETO DEL CÓNYUGE CONCUBINA O CONCUBINARIO', 'Nombre del cónyuge'], ['NOMBRE Y NÚMERO DE LA IDENTIFICACIÓN OFICIAL  AUTORIDAD QUE LA EMITE_2', 'INE del cónyuge (9 dígitos)']]],
   ['Contacto', [['PARTICULAR 1', 'Teléfono particular'], ['CELULAR', 'Celular'], ['CORREO ELECTRÓNICO PERSONAL', 'Correo personal']]],
   ['Domicilio particular (II)', PF_DOM('')],
@@ -2291,7 +2287,7 @@ function pfDetalle(s){
     }
     det.append(grid);
   }
-  det.append(el('div', {class:'gd', style:'margin-top:6px', text:'Lo que subas o escribas aquí solo va al KYC PF de este accionista; no cambia el KYC de la moral.'}));
+  det.append(el('div', {class:'gd', style:'margin-top:6px', text:'Lo que subas o escribas aquí solo va al KYC PF de este accionista; no cambia el KYC de la moral. Los datos fijos del KYC PF (ocupación, residencia, apoderado, relaciones, nivel de control, patrimonio, divisas, transaccionalidad, e.firma) se quedan como los trae su plantilla.'}));
   return det;
 }
 
