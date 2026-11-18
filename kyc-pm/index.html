@@ -178,7 +178,7 @@ section.sec{background:var(--surface);border:1px solid var(--line);border-radius
 </style>
 
 <header class="top"><div class="top-in wrap">
-  <div class="brand"><b>KYC Persona Moral</b><span>Plantilla con datos fijos · versión 18/11/2026 11:45</span></div>
+  <div class="brand"><b>KYC Persona Moral</b><span>Plantilla con datos fijos · versión 18/11/2026 15:10</span></div>
   <div class="exp"><label for="expName">Expediente</label><input id="expName" placeholder="Ej. NOMBRE DE LA EMPRESA F/0394" autocomplete="off"></div>
   <div class="meter" title="Campos editables con valor"><div class="bar"><i id="barFill"></i></div><span id="meterTxt">0 / 0</span><small>editables</small></div>
   <div class="actions">
@@ -941,13 +941,16 @@ async function readAny(file){
   if (ext === 'pdf') return await readPdf(buf, maxImgs);
   if (SHEET_EXT.includes(ext)){
     const wb = XLSX.read(buf, {type:'array', cellDates:true});
-    let text = '';
-    for (const n of wb.SheetNames){ text += `\n--- Hoja: ${n} ---\n` + XLSX.utils.sheet_to_csv(wb.Sheets[n], {blankrows:false}); }
+    // Del Excel PLANTILLA solo se manda la pestaña PLATILLA-KYC (texto e imágenes); las demás hojas se ignoran
+    const hoja = hojaKYC(wb.SheetNames);
+    if (!hoja) return {text: `[Este Excel no trae la pestaña PLATILLA-KYC (trae: ${wb.SheetNames.join(', ')}). No tomes ningún dato de este archivo.]`, images: []};
+    let text = `\n--- Hoja: ${hoja} ---\n` + XLSX.utils.sheet_to_csv(wb.Sheets[hoja], {blankrows:false});
+    if (wb.SheetNames.length > 1) text += `\n[Solo se envía la pestaña ${hoja}; el archivo trae otras hojas que no se consideran.]`;
     const images = [];
     if (ext !== 'csv' && ext !== 'tsv' && ext !== 'xls'){
       try{
         const zip = await JSZip.loadAsync(buf);
-        for (const f of Object.keys(zip.files).filter(f => /^xl\/media\/.+\.(png|jpe?g|gif|bmp|webp)$/i.test(f)).sort()){
+        for (const f of await mediaDeHoja(zip, hoja)){
           if (images.length >= maxImgs) break;
           const b = await zip.file(f).async('blob'); if (b.size > 5000) images.push(await toJpeg(b));
         }
@@ -1448,12 +1451,34 @@ function findRow(rows, cands, {from = 0, to = rows.length, colFrom = 0, colTo = 
   }
   return null;
 }
+// Del Excel PLANTILLA solo cuenta la pestaña «PLATILLA-KYC» (también se acepta escrita «PLANTILLA-KYC»): las demás hojas se ignoran
+const hojaKYC = names => names.find(n => /^PLAN?TILLA ?KYC$/.test(LK(n))) || null;
+// Imágenes que están pegadas en esa pestaña (no las de otras hojas del archivo)
+async function mediaDeHoja(zip, nombre){
+  const xml = async p => { const f = zip.file(p); return f ? new DOMParser().parseFromString(await f.async('string'), 'application/xml') : null; };
+  const rels = async p => { const d = await xml(p); return d ? [...d.getElementsByTagName('Relationship')].map(r => ({id: r.getAttribute('Id'), type: r.getAttribute('Type') || '', target: r.getAttribute('Target') || ''})) : []; };
+  const resolver = (base, t) => { if (t.startsWith('/')) return t.slice(1); const parts = base.split('/').slice(0, -1); for (const s of t.split('/')){ if (s === '..') parts.pop(); else if (s !== '.') parts.push(s); } return parts.join('/'); };
+  const wbx = await xml('xl/workbook.xml'); if (!wbx) return [];
+  const hoja = [...wbx.getElementsByTagName('sheet')].find(s => s.getAttribute('name') === nombre); if (!hoja) return [];
+  const rid = hoja.getAttribute('r:id') || [...hoja.attributes].find(a => /(^|:)id$/.test(a.name) && a.name !== 'sheetId')?.value;
+  const hr = (await rels('xl/_rels/workbook.xml.rels')).find(r => r.id === rid); if (!hr) return [];
+  const sheetPath = resolver('xl/workbook.xml', hr.target);
+  const sheetRels = sheetPath.replace(/([^/]+)$/, '_rels/$1.rels');
+  const media = [];
+  for (const r of await rels(sheetRels)){
+    if (!/\/drawing$/.test(r.type)) continue;
+    const dPath = resolver(sheetPath, r.target);
+    for (const m of await rels(dPath.replace(/([^/]+)$/, '_rels/$1.rels'))) if (/\/image$/.test(m.type)) media.push(resolver(dPath, m.target));
+  }
+  return [...new Set(media)].filter(f => /\.(png|jpe?g|gif|bmp|webp)$/i.test(f)).sort();
+}
 function parsePlantilla(wb){
   const out = []; const notes = [];
   const put = (key, v, ev) => { if (v && BYKEY[key] && !out.some(o => o.id === BYKEY[key].id)) out.push({id: BYKEY[key].id, valor: v, evidencia: ev}); };
   const names = wb.SheetNames;
-  // Solo la hoja PLATILLA-KYC / PLANTILLA-KYC; si no existe, la primera que diga KYC o la primera hoja
-  const kycName = names.find(n => /^PLAN?TILLA ?KYC$/.test(LK(n))) || names.find(n => /PLAN?TILLA.*KYC/.test(LK(n))) || names.find(n => /KYC/.test(LK(n))) || names[0];
+  // Solo la pestaña PLATILLA-KYC; si el archivo no la trae, no se toma nada
+  const kycName = hojaKYC(names);
+  if (!kycName){ notes.push('El Excel no trae la pestaña PLATILLA-KYC: no se tomó ningún dato'); return {campos: out, notes}; }
   if (names.length > 1) notes.push(`Solo se leyó la hoja ${kycName}`);
   const rows = sheetRows(wb.Sheets[kycName]);
   // Tabla CAMPOS / DATOS
@@ -1842,7 +1867,8 @@ async function localRead(file, setMsg){
     const p = parsePlantilla(wb); res.campos.push(...p.campos); obs.push(...p.notes);
     if (!['csv', 'tsv', 'xls'].includes(ext)){
       const zip = await JSZip.loadAsync(buf);
-      const media = Object.keys(zip.files).filter(f => /^xl\/media\/.+\.(png|jpe?g|gif|bmp|webp)$/i.test(f)).sort();
+      const hoja = hojaKYC(wb.SheetNames);
+      const media = hoja ? await mediaDeHoja(zip, hoja) : [];
       for (let i = 0; i < media.length; i++){
         const b = await zip.file(media[i]).async('blob'); if (b.size < 5000) continue;
         await doImage(b, `la imagen ${i + 1} de ${media.length} del Excel`);
