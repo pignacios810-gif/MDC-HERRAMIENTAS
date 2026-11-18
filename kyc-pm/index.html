@@ -178,7 +178,7 @@ section.sec{background:var(--surface);border:1px solid var(--line);border-radius
 </style>
 
 <header class="top"><div class="top-in wrap">
-  <div class="brand"><b>KYC Persona Moral</b><span>Plantilla con datos fijos · versión 18/11/2026 00:00</span></div>
+  <div class="brand"><b>KYC Persona Moral</b><span>Plantilla con datos fijos · versión 18/11/2026 00:20</span></div>
   <div class="exp"><label for="expName">Expediente</label><input id="expName" placeholder="Ej. NOMBRE DE LA EMPRESA F/0394" autocomplete="off"></div>
   <div class="meter" title="Campos editables con valor"><div class="bar"><i id="barFill"></i></div><span id="meterTxt">0 / 0</span><small>editables</small></div>
   <div class="actions">
@@ -1983,6 +1983,9 @@ const pfKey = s => s.rfc || s.nombre;
 const pfX = s => { S.pfData = S.pfData || {}; return S.pfData[pfKey(s)] || (S.pfData[pfKey(s)] = { v: {}, src: {}, files: [] }); };
 const CURP_OK = c => /^[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d$/.test(c || '');
 const pfCurp = s => { const x = (S.pfData || {})[pfKey(s)]; const c = x && x.v['CURP O SU EQUIVALENTE']; return CURP_OK(c) ? c : (pfEsRL(s) ? pfCurpRL() : ''); };
+// CURP, INE, fecha y entidad de nacimiento del KYC PF de accionistas: SOLO de la INE del accionista (o lo que se escriba a mano)
+const PF_DE_INE = ['CURP O SU EQUIVALENTE', 'NOMBRE Y NÚMERO DE LA IDENTIFICACIÓN OFICIAL  AUTORIDAD QUE LA EMITE', 'FECHA DE NACIMIENTO', 'ENTIDAD FEDERATIVA DE NACIMIENTO'];
+const pfCurpIne = s => { const x = (S.pfData || {})[pfKey(s)]; const c = x && x.v['CURP O SU EQUIVALENTE']; return CURP_OK(c) ? c : ''; };
 const pfGenero = s => { const c = pfCurp(s); if (c) return c[10] === 'H' ? 'M' : 'F'; return (S.pfGen || {})[pfKey(s)] || ''; };
 function pfPartirNombre(full){
   const P = ['DE','DEL','LA','LAS','LOS','Y','MC','MAC','VAN','VON','DA','DI','SAN'];
@@ -1993,11 +1996,11 @@ function pfPartirNombre(full){
 }
 // Datos del KYC PF para un accionista (claves = nombres de campo del formato F/0394)
 function pfDatos(s){
-  const rl = pfEsRL(s), curp = pfCurp(s), gen = pfGenero(s);
+  const rl = pfEsRL(s), curp = pfCurpIne(s), gen = pfGenero(s);
   const [nom, ap, am] = pfPartirNombre(s.nombre);
   const nac = pmv('NACIONALIDAD_2');
   const mex = !rl || !nac || /^MEXICAN/.test(nac);
-  const ine = rl ? (pmv('NOMBRE Y NÚMERO  DE LA IDENTIFICACIÓN  AUTORIDAD QUE LA EMITE').replace(/\s/g, '').match(/(\d{9})\d?$/) || [])[1] || '' : '';
+  const ine = '';   // de la INE del accionista (se sube en «Completar datos»)
   const ineC = rl ? (pmv('NOMBRE Y NÚMERO  DE LA IDENTIFICACIÓN  AUTORIDAD QUE LA EMITE_2').replace(/\s/g, '').match(/(\d{9})\d?$/) || [])[1] || '' : '';
   const pctTxt = (Math.round(s.pct * 100) / 100).toFixed(2) + '%';
   const cargo = (ADM.map(([n, c]) => [hasValue(n) ? cur(n) : '', hasValue(c) ? cur(c) : '']).find(([n, c]) => n && c && sameName(n, s.nombre)) || [])[1] || (rl ? pmv('CARGO QUE DESEMPEÑA EN LA EMPRESA') : '');
@@ -2006,7 +2009,7 @@ function pfDatos(s){
     'FECHA': cur(FECHA),
     'NOMBRES': nom, 'APELLIDO PATERNO': ap, 'APELLIDO MATERNO': am, 'ALIAS': nom,
     'NACIONALIDAD EN CASO DE TENER MÁS DE UNA INDIQUE TODAS': mex ? (gen === 'M' ? 'MEXICANO' : 'MEXICANA') : nac,
-    'FECHA DE NACIMIENTO': s.fn || (rl ? pmv('FECHA DE NACIMIENTO') : ''),
+    'FECHA DE NACIMIENTO': '',
     'ENTIDAD FEDERATIVA DE NACIMIENTO': curp ? (PF_ENT[curp.slice(11, 13)] || '') : '',
     'PAÍS DE NACIMIENTO ORIGEN': s.paisNac || (curp ? 'MÉXICO' : ''),
     'RFC Homoclave ID Fiscal 3': s.rfc,
@@ -2148,6 +2151,8 @@ function pfLeerLocal(text, s){
       if (num.length === 9) put('NOMBRE Y NÚMERO DE LA IDENTIFICACIÓN OFICIAL  AUTORIDAD QUE LA EMITE_2', num);
     } else {
       if (e.curp) put('CURP O SU EQUIVALENTE', e.curp);
+      const fe = (e.campos.find(c => c.id === BYKEY['FECHA DE NACIMIENTO'].id) || {}).valor; if (fe) put('FECHA DE NACIMIENTO', fe);
+      if (e.curp && PF_ENT[e.curp.slice(11, 13)]) put('ENTIDAD FEDERATIVA DE NACIMIENTO', PF_ENT[e.curp.slice(11, 13)]);
       if (num.length === 9) put('NOMBRE Y NÚMERO DE LA IDENTIFICACIÓN OFICIAL  AUTORIDAD QUE LA EMITE', num); else notas.push('sin el número tras IDMEX (sube el reverso)');
       // Domicilio del frente de la INE: calle y número / colonia y C.P. / municipio, estado
       const L = text.split(/\n+/).map(l => LN(l).replace(/[^A-Z0-9 ,.#\-]/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean);
@@ -2169,7 +2174,6 @@ function pfLeerLocal(text, s){
     tipo = 'Constancia de Situación Fiscal';
     const rfc = (U.match(/\bRFC\s*:?\s*([A-ZÑ&]{4}\d{6}[A-Z0-9]{3})\b/) || [])[1];
     if (rfc && s.rfc && rfc.slice(0, 10) !== s.rfc.slice(0, 10)) return { tipo: tipo + ' de otro RFC (' + rfc + ')', out: {}, notas: ['no corresponde a este accionista'] };
-    const curp = (U.match(/\bCURP\s*:?\s*([A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d)\b/) || [])[1]; if (curp) put('CURP O SU EQUIVALENTE', curp);
     const L = 'CODIGO POSTAL|TIPO DE VIALIDAD|NOMBRE DE (?:LA )?VIALIDAD|NUMERO EXTERIOR|NUMERO INTERIOR|NOMBRE DE LA COLONIA|NOMBRE DE LA LOCALIDAD|NOMBRE DEL MUNICIPIO O DEMARCACION TERRITORIAL|NOMBRE DE LA ENTIDAD FEDERATIVA|ENTRE CALLE|Y CALLE|CORREO ELECTRONICO|TEL\\. FIJO|TEL\\. MOVIL|ESTADO DEL DOMICILIO|ESTADO DEL CONTRIBUYENTE|ACTIVIDADES ECONOMICAS';
     const tv = despues('TIPO DE VIALIDAD', L), nv = despues('NOMBRE DE (?:LA )?VIALIDAD', L);
     put('CALLE_2', (tv && !/^CALLE$/.test(tv) ? tv + ' ' : '') + nv);
@@ -2197,7 +2201,7 @@ async function pfLeerClaude(file, text, images, s){
 Devuelve JSON: {"tipo_documento": "...", "titular": "nombre de quien es el documento", "campos": {"<clave>": "<valor>"}}.
 Claves permitidas (usa exactamente estas; omite las que no vengan):
 ${claves.map(([k, l]) => `- "${k}": ${l}`).join('\n')}
-Reglas: domicilio particular (claves sin _2) de la INE o de un comprobante de domicilio; domicilio fiscal (claves con _2) SOLO de la Constancia de Situación Fiscal. INE: solo los 9 dígitos que siguen a IDMEX en el reverso. Si el documento es de otra persona que no es el cónyuge, devuelve "campos": {}. Todo en MAYÚSCULAS. No inventes datos.
+Reglas: domicilio particular (claves sin _2) de la INE o de un comprobante de domicilio; domicilio fiscal (claves con _2) SOLO de la Constancia de Situación Fiscal. CURP, INE, fecha de nacimiento y entidad de nacimiento SOLO de la INE (credencial para votar) del accionista; de cualquier otro documento omítelos. INE: solo los 9 dígitos que siguen a IDMEX en el reverso. Si el documento es de otra persona que no es el cónyuge, devuelve "campos": {}. Todo en MAYÚSCULAS. No inventes datos.
 Texto del documento:
 ${text.slice(0, 30000)}`;
   const opts = { modelTier: 'complex' };
@@ -2217,8 +2221,10 @@ async function pfSubir(s, files){
       if (sample){ try { setMsg('Claude está leyendo…'); r = await pfLeerClaude(file, text, images, s); } catch(e){ r = null; } }
       if (!r || !Object.keys(r.out).length){ const l = pfLeerLocal(text, s); if (!r || Object.keys(l.out).length) r = l; }
       let n = 0; const dif = [];
+      const esINE = /\bINE\b|CREDENCIAL|ELECTORAL/i.test(r.tipo) && !/C[OÓ]NYUGE/i.test(r.tipo);
       for (const [k, v] of Object.entries(r.out)){
         if (!v) continue;
+        if (PF_DE_INE.includes(k) && !esINE) continue;
         const cur0 = X.v[k];
         if (!cur0){ X.v[k] = v; X.src[k] = file.name; n++; }
         else if (norm(cur0) !== norm(v)) dif.push(k);
