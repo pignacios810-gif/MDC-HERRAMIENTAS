@@ -1814,11 +1814,17 @@ const INBURSA={id:'inbursa',name:'Banco Inbursa',
         // El mes está en la primera línea (bandLines[0].w[0])
         const mesTxt=bandLines[0].w[0].s.replace('.','').toUpperCase();
         const mo=INBURSA_MES[mesTxt]; if(mo==null) continue;
-        // El día está en una línea posterior, en x<30 (ej "01","02",…)
+        // El día puede venir en la MISMA línea del mes como siguiente token (formato "SEP. 01"),
+        // o en una línea posterior en x<30 (variantes antiguas del formato).
         let dia=null;
-        for(const L of bandLines){
-          for(const w of L.w){if(w.x0<30 && DIA_RE.test(w.s)){dia=+w.s;break}}
-          if(dia!=null) break;
+        if(bandLines[0].w.length>=2 && DIA_RE.test(bandLines[0].w[1].s) && bandLines[0].w[1].x0<70){
+          dia=+bandLines[0].w[1].s;
+        }
+        if(dia==null){
+          for(const L of bandLines){
+            for(const w of L.w){if(w.x0<30 && DIA_RE.test(w.s)){dia=+w.s;break}}
+            if(dia!=null) break;
+          }
         }
         const yr=o.period?o.period.y:new Date().getFullYear();
         // Agrupar los contenidos de las otras columnas
