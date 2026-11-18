@@ -1,4 +1,21 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}
+.pfx{margin-top:6px;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--bg)}
+.pfx summary{cursor:pointer;font-size:12.5px;font-weight:600}
+.pfg{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:4px 11px;font-size:12px;cursor:pointer}
+.pfg[aria-pressed="true"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.pfdrop{border:1.5px dashed var(--accent);border-radius:8px;padding:10px;margin-top:8px;text-align:center;font-size:12px;cursor:pointer;background:var(--surface);color:var(--muted)}
+.pfdrop.over{background:var(--accent-soft)}
+.pffiles{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:var(--muted);overflow-wrap:anywhere}
+.pffiles .err{color:var(--err)} .pffiles .done{color:var(--auto)}
+.pfsub{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-top:10px}
+.pfgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px 8px;margin-top:4px}
+.pff{display:flex;flex-direction:column;gap:2px;min-width:0}
+.pff label{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+.pff input{width:100%;border:1px solid var(--line);border-radius:6px;padding:5px 7px;background:var(--surface);font-family:var(--mono);font-size:12px;min-width:0;text-transform:uppercase}
+.pff.falta input{border-color:var(--warn);border-style:dashed}
+.pff.auto input{border-color:var(--auto)}
+.pff .src{font-size:10.5px}
+</style></head><body>
 <title>KYC Persona Moral Sofimex</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -161,7 +178,7 @@ section.sec{background:var(--surface);border:1px solid var(--line);border-radius
 </style>
 
 <header class="top"><div class="top-in wrap">
-  <div class="brand"><b>KYC Persona Moral</b><span>Plantilla con datos fijos · versión 17/11/2026 22:10</span></div>
+  <div class="brand"><b>KYC Persona Moral</b><span>Plantilla con datos fijos · versión 17/11/2026 23:30</span></div>
   <div class="exp"><label for="expName">Expediente</label><input id="expName" placeholder="Ej. NOMBRE DE LA EMPRESA F/0394" autocomplete="off"></div>
   <div class="meter" title="Campos editables con valor"><div class="bar"><i id="barFill"></i></div><span id="meterTxt">0 / 0</span><small>editables</small></div>
   <div class="actions">
@@ -1962,7 +1979,11 @@ function pfSocios(){
 }
 const pfEsRL = s => { const rn = pmv('NOMBRE  DEL REPRESENTANTE O REPRESENTANTRES LEGALES'), rr = pmv('RFC CON HOMOCLAVE'); return !!rn && ((s.rfc && rr && s.rfc.slice(0, 10) === rr.slice(0, 10)) || sameName(s.nombre, rn)); };
 const pfCurpRL = () => { const c = pmv('CURP'); return /^[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d$/.test(c) ? c : ''; };
-const pfGenero = s => { if (pfEsRL(s)){ const c = pfCurpRL(); if (c) return c[10] === 'H' ? 'M' : 'F'; } return (S.pfGen || {})[s.rfc || s.nombre] || ''; };
+const pfKey = s => s.rfc || s.nombre;
+const pfX = s => { S.pfData = S.pfData || {}; return S.pfData[pfKey(s)] || (S.pfData[pfKey(s)] = { v: {}, src: {}, files: [] }); };
+const CURP_OK = c => /^[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d$/.test(c || '');
+const pfCurp = s => { const x = (S.pfData || {})[pfKey(s)]; const c = x && x.v['CURP O SU EQUIVALENTE']; return CURP_OK(c) ? c : (pfEsRL(s) ? pfCurpRL() : ''); };
+const pfGenero = s => { const c = pfCurp(s); if (c) return c[10] === 'H' ? 'M' : 'F'; return (S.pfGen || {})[pfKey(s)] || ''; };
 function pfPartirNombre(full){
   const P = ['DE','DEL','LA','LAS','LOS','Y','MC','MAC','VAN','VON','DA','DI','SAN'];
   const w = norm(full).split(' ').filter(Boolean);
@@ -1972,7 +1993,7 @@ function pfPartirNombre(full){
 }
 // Datos del KYC PF para un accionista (claves = nombres de campo del formato F/0394)
 function pfDatos(s){
-  const rl = pfEsRL(s), curp = rl ? pfCurpRL() : '', gen = pfGenero(s);
+  const rl = pfEsRL(s), curp = pfCurp(s), gen = pfGenero(s);
   const [nom, ap, am] = pfPartirNombre(s.nombre);
   const nac = pmv('NACIONALIDAD_2');
   const mex = !rl || !nac || /^MEXICAN/.test(nac);
@@ -2010,6 +2031,16 @@ function pfDatos(s){
     'NOMBRE Y FIRMA': s.nombre,
     'NOMBRE Y FIRMA_2': pmv('NOMBRE_3'),
   };
+  // Datos subidos o capturados para este accionista (mandan sobre lo que trae la moral)
+  const X = (S.pfData || {})[pfKey(s)];
+  if (X) for (const [k, v] of Object.entries(X.v)){ if (!v) continue; t[k] = PF_INE.includes(k) ? 'INE - ' + v : v; }
+  // Derivados: de la CURP (fecha y entidad de nacimiento) y del C.P. (estado)
+  if (curp){ if (!t['FECHA DE NACIMIENTO']){ const yy = +curp.slice(4, 6); t['FECHA DE NACIMIENTO'] = `${curp.slice(8, 10)}/${curp.slice(6, 8)}/${(/\d/.test(curp[16]) ? 1900 : 2000) + yy}`; } if (!t['ENTIDAD FEDERATIVA DE NACIMIENTO']) t['ENTIDAD FEDERATIVA DE NACIMIENTO'] = PF_ENT[curp.slice(11, 13)] || ''; if (!t['PAÍS DE NACIMIENTO ORIGEN'] && curp.slice(11, 13) !== 'NE') t['PAÍS DE NACIMIENTO ORIGEN'] = 'MÉXICO'; }
+  for (const suf of ['', '_2']){
+    const cp = String(t['C POSTAL' + suf] || '').replace(/\D/g, '');
+    if (/^\d{5}$/.test(cp) && !t['ENTIDAD FEDERATIVA' + suf]) t['ENTIDAD FEDERATIVA' + suf] = edoCP(cp);
+    if ((t['CALLE' + suf] || t['C POSTAL' + suf]) && !t['PAÍS' + suf]) t['PAÍS' + suf] = 'MÉXICO';
+  }
   // Radios del formato PF (el resto de las respuestas se quedan como las trae la plantilla PF)
   const r = { 'GRUPO 7': '/1' };
   if (gen) r['GRUPO 1'] = gen === 'M' ? '/0' : '/1';
@@ -2052,11 +2083,155 @@ async function pfDescargar(i){
     await save(`KYC_PF_F0394_${safeName([nom, ap].join(' ')).replace(/ /g, '_')}.pdf`, new Blob([bytes], { type: 'application/pdf' }));
   }catch(e){ toast('No se pudo generar el KYC PF: ' + (e.message || e)); }
 }
+/* --- Datos pendientes del accionista: se completan subiendo sus documentos o escribiéndolos --- */
+const PF_INE = ['NOMBRE Y NÚMERO DE LA IDENTIFICACIÓN OFICIAL  AUTORIDAD QUE LA EMITE', 'NOMBRE Y NÚMERO DE LA IDENTIFICACIÓN OFICIAL  AUTORIDAD QUE LA EMITE_2'];
+const PF_DOM = suf => [['CALLE' + suf, 'Calle'], ['NÚM EXTERIOR' + suf, 'Núm. exterior'], ['NÚM INTERIOR' + suf, 'Núm. interior (o S/N)'], ['COLONIA' + suf, 'Colonia'], ['C POSTAL' + suf, 'C.P.'], ['AÑOS RESIDENCIA' + suf, 'Años de residencia'], ['ALCALDÍA O MUNICIPIO' + suf, 'Alcaldía o municipio'], ['CIUDAD O POBLACIÓN' + suf, 'Ciudad o población'], ['ENTIDAD FEDERATIVA' + suf, 'Entidad federativa'], ['PAÍS' + suf, 'País']];
+const PF_CAMPOS = [
+  ['Identificación', [['CURP O SU EQUIVALENTE', 'CURP'], ['NOMBRE Y NÚMERO DE LA IDENTIFICACIÓN OFICIAL  AUTORIDAD QUE LA EMITE', 'INE (9 dígitos tras IDMEX)'], ['FECHA DE NACIMIENTO', 'Fecha de nacimiento'], ['ENTIDAD FEDERATIVA DE NACIMIENTO', 'Entidad de nacimiento'], ['NÚMERO DE SERIE DE LA FIRMA ELECTRÓNICA AVANZADA 2', 'No. de serie de la e.firma']]],
+  ['Estado civil', [['ESTADO CIVIL', 'Estado civil'], ['RÉGIMEN MATRIMONIAL', 'Régimen matrimonial'], ['NOMBRE COMPLETO DEL CÓNYUGE CONCUBINA O CONCUBINARIO', 'Nombre del cónyuge'], ['NOMBRE Y NÚMERO DE LA IDENTIFICACIÓN OFICIAL  AUTORIDAD QUE LA EMITE_2', 'INE del cónyuge (9 dígitos)']]],
+  ['Contacto', [['PARTICULAR 1', 'Teléfono particular'], ['CELULAR', 'Celular'], ['CORREO ELECTRÓNICO PERSONAL', 'Correo personal']]],
+  ['Domicilio particular (II)', PF_DOM('')],
+  ['Domicilio fiscal (II.1)', PF_DOM('_2')],
+];
+const PF_OPC = new Set(['NÚMERO DE SERIE DE LA FIRMA ELECTRÓNICA AVANZADA 2', 'NOMBRE COMPLETO DEL CÓNYUGE CONCUBINA O CONCUBINARIO', 'NOMBRE Y NÚMERO DE LA IDENTIFICACIÓN OFICIAL  AUTORIDAD QUE LA EMITE_2', 'RÉGIMEN MATRIMONIAL', 'PARTICULAR 1', 'AÑOS RESIDENCIA', 'AÑOS RESIDENCIA_2']);
+const pfValor = (t, k) => PF_INE.includes(k) ? String(t[k] || '').replace(/^INE\s*-\s*/, '') : (t[k] || '');
+function pfPendientes(s){
+  const { t } = pfDatos(s); const casado = /CASAD/.test(norm(t['ESTADO CIVIL']));
+  return PF_CAMPOS.flatMap(([, fs]) => fs).filter(([k]) => !pfValor(t, k) && (!PF_OPC.has(k) || (casado && /CÓNYUGE|_2$|RÉGIMEN/.test(k) && !/AÑOS/.test(k))));
+}
+// Lectura de un documento del accionista: texto (y OCR de imágenes o páginas escaneadas)
+async function pfTexto(file, setMsg){
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  if (IMG_EXT.includes(ext) || (file.type || '').startsWith('image/')){
+    const img = await toJpeg(file, 2400); return { text: await ocrText(img, p => setMsg(`OCR ${Math.round(p * 100)}%`)), images: [img] };
+  }
+  const buf = await file.arrayBuffer();
+  if (ext === 'pdf'){
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const pdf = await pdfjsLib.getDocument({ data: buf }).promise; const n = Math.min(pdf.numPages, 12);
+    let text = ''; const images = [];
+    for (let i = 1; i <= n; i++){
+      setMsg(`Leyendo página ${i} de ${n}…`);
+      const pg = await pdf.getPage(i); const tc = await pg.getTextContent();
+      let t = '', lastY = null; for (const it of tc.items){ const y = it.transform ? Math.round(it.transform[5]) : null; if (lastY !== null && y !== lastY) t += '\n'; else if (t) t += ' '; t += it.str; lastY = y; }
+      if (t.replace(/\s/g, '').length < 40 && images.length < 4){
+        const vp = pg.getViewport({ scale: 2.2 }); const c = document.createElement('canvas'); c.width = vp.width; c.height = vp.height;
+        await pg.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+        const img = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.85)); images.push(img);
+        t = await ocrText(img, p => setMsg(`Página ${i} es imagen: OCR ${Math.round(p * 100)}%`));
+      }
+      text += '\n' + t;
+    }
+    return { text, images };
+  }
+  if (SHEET_EXT.includes(ext)){ const wb = XLSX.read(buf, { type: 'array' }); return { text: wb.SheetNames.map(n => XLSX.utils.sheet_to_csv(wb.Sheets[n], { blankrows: false })).join('\n'), images: [] }; }
+  if (ext === 'docx'){ const r = await mammoth.extractRawText({ arrayBuffer: buf }); return { text: r.value, images: [] }; }
+  if (TEXT_EXT.includes(ext)) return { text: new TextDecoder().decode(buf), images: [] };
+  throw new Error('Formato no reconocido. Sube PDF, imagen (JPG/PNG), Word o Excel.');
+}
+// Lectura con reglas (sin Claude): INE, Constancia de Situación Fiscal, acta de matrimonio y datos de contacto
+function pfLeerLocal(text, s){
+  const U = LN(text), out = {}, notas = []; let tipo = 'Documento';
+  const put = (k, v) => { v = norm(v); if (v) out[k] = v; };
+  const despues = (lab, hasta) => { const m = U.match(new RegExp(lab + '\\s*:?\\s*(.*?)\\s*(?=' + hasta + '|\\n|$)')); return m ? m[1].trim() : ''; };
+  if (/IDMEX|INSTITUTO NACIONAL ELECTORAL|CREDENCIAL PARA VOTAR|CLAVE DE ELECTOR/.test(U)){
+    tipo = 'INE';
+    const e = parseINE(text);
+    const idm = U.replace(/\s/g, '').match(/[I1L][D0O]M[E3]X([0-9OILSZB|]{9})/);
+    const num = idm ? digs(idm[1]).replace(/\D/g, '') : '';
+    const deOtro = e.nombre && !sameName(e.nombre, s.nombre) && !(e.curp && curpDeNombre(e.curp, s.nombre));
+    if (deOtro){
+      tipo = 'INE del cónyuge (' + e.nombre + ')';
+      put('NOMBRE COMPLETO DEL CÓNYUGE CONCUBINA O CONCUBINARIO', e.nombre);
+      if (num.length === 9) put('NOMBRE Y NÚMERO DE LA IDENTIFICACIÓN OFICIAL  AUTORIDAD QUE LA EMITE_2', num);
+    } else {
+      if (e.curp) put('CURP O SU EQUIVALENTE', e.curp);
+      if (num.length === 9) put('NOMBRE Y NÚMERO DE LA IDENTIFICACIÓN OFICIAL  AUTORIDAD QUE LA EMITE', num); else notas.push('sin el número tras IDMEX (sube el reverso)');
+      // Domicilio del frente de la INE: calle y número / colonia y C.P. / municipio, estado
+      const L = text.split(/\n+/).map(l => LN(l).replace(/[^A-Z0-9 ,.#\-]/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean);
+      const d = L.findIndex(l => /^DOMICILIO\b/.test(l));
+      if (d >= 0){
+        const r = []; const first = L[d].replace(/^DOMICILIO\s*/, ''); if (first) r.push(first);
+        for (let j = d + 1; j < L.length && r.length < 3; j++){ if (/^(CLAVE|CURP|FECHA|SECCION|VIGENCIA|ANO DE|SEXO|EMISION|REGISTRO)/.test(L[j])) break; r.push(L[j]); }
+        if (r.length >= 2){
+          const m1 = r[0].replace(/^(C|CALLE|AV|AVE|AVENIDA|BLVD|CDA|PRIV|AND)\.?\s+/, (x) => /^(AV|AVE|AVENIDA)/.test(x) ? 'AV ' : /^BLVD/.test(x) ? 'BLVD ' : /^CDA/.test(x) ? 'CDA ' : /^PRIV/.test(x) ? 'PRIV ' : '').match(/^(.*?)\s+((?:NO\.?\s*|#\s*)?\d+[A-Z]?|S\/?N|MZ.*)(?:\s+(?:INT\.?|INTERIOR|DEPTO\.?|DEP\.?)\s*([\w\-]+))?$/);
+          if (m1){ put('CALLE', m1[1]); put('NÚM EXTERIOR', m1[2].replace(/^(NO\.?\s*|#\s*)/, '')); if (m1[3]) put('NÚM INTERIOR', m1[3]); } else put('CALLE', r[0]);
+          const m2 = r[1].match(/^(?:COL\.?|COLONIA|FRACC\.?|FRACCIONAMIENTO|BARRIO|BO\.?|UNIDAD|U\.?\s?H\.?)?\s*(.*?)\s*(\d{5})?$/);
+          if (m2){ put('COLONIA', m2[1]); if (m2[2]) put('C POSTAL', m2[2]); }
+          if (r[2]){ const mun = r[2].split(',')[0].replace(/\.$/, '').trim(); put('ALCALDÍA O MUNICIPIO', mun); put('CIUDAD O POBLACIÓN', mun); }
+          notas.push('domicilio particular tomado de la INE');
+        }
+      }
+    }
+  } else if (/CONSTANCIA DE SITUACION FISCAL|CEDULA DE IDENTIFICACION FISCAL/.test(U)){
+    tipo = 'Constancia de Situación Fiscal';
+    const rfc = (U.match(/\bRFC\s*:?\s*([A-ZÑ&]{4}\d{6}[A-Z0-9]{3})\b/) || [])[1];
+    if (rfc && s.rfc && rfc.slice(0, 10) !== s.rfc.slice(0, 10)) return { tipo: tipo + ' de otro RFC (' + rfc + ')', out: {}, notas: ['no corresponde a este accionista'] };
+    const curp = (U.match(/\bCURP\s*:?\s*([A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d)\b/) || [])[1]; if (curp) put('CURP O SU EQUIVALENTE', curp);
+    const L = 'CODIGO POSTAL|TIPO DE VIALIDAD|NOMBRE DE (?:LA )?VIALIDAD|NUMERO EXTERIOR|NUMERO INTERIOR|NOMBRE DE LA COLONIA|NOMBRE DE LA LOCALIDAD|NOMBRE DEL MUNICIPIO O DEMARCACION TERRITORIAL|NOMBRE DE LA ENTIDAD FEDERATIVA|ENTRE CALLE|Y CALLE|CORREO ELECTRONICO|TEL\\. FIJO|TEL\\. MOVIL|ESTADO DEL DOMICILIO|ESTADO DEL CONTRIBUYENTE|ACTIVIDADES ECONOMICAS';
+    const tv = despues('TIPO DE VIALIDAD', L), nv = despues('NOMBRE DE (?:LA )?VIALIDAD', L);
+    put('CALLE_2', (tv && !/^CALLE$/.test(tv) ? tv + ' ' : '') + nv);
+    put('NÚM EXTERIOR_2', despues('NUMERO EXTERIOR', L)); put('NÚM INTERIOR_2', despues('NUMERO INTERIOR', L));
+    put('COLONIA_2', despues('NOMBRE DE LA COLONIA', L)); put('C POSTAL_2', (despues('CODIGO POSTAL', L).match(/\d{5}/) || [''])[0]);
+    put('ALCALDÍA O MUNICIPIO_2', despues('NOMBRE DEL MUNICIPIO O DEMARCACION TERRITORIAL', L));
+    put('CIUDAD O POBLACIÓN_2', despues('NOMBRE DE LA LOCALIDAD', L) || despues('NOMBRE DEL MUNICIPIO O DEMARCACION TERRITORIAL', L));
+    put('ENTIDAD FEDERATIVA_2', despues('NOMBRE DE LA ENTIDAD FEDERATIVA', L));
+    if (out['CALLE_2']) notas.push('domicilio fiscal');
+  } else if (/ACTA DE MATRIMONIO|MATRIMONIO/.test(U) && /REGISTRO CIVIL|CONTRAYENTES|CONYUGE/.test(U)){
+    tipo = 'Acta de matrimonio';
+    put('ESTADO CIVIL', 'CASADO');
+    if (/SEPARACION DE BIENES/.test(U)) put('RÉGIMEN MATRIMONIAL', 'SEPARACIÓN DE BIENES'); else if (/SOCIEDAD CONYUGAL/.test(U)) put('RÉGIMEN MATRIMONIAL', 'SOCIEDAD CONYUGAL');
+  }
+  // Correo y teléfonos (cualquier documento)
+  const mail = (text.match(/[\w.+\-]+@[\w\-]+\.[\w.\-]+/) || [])[0]; if (mail && tipo !== 'Constancia de Situación Fiscal') put('CORREO ELECTRÓNICO PERSONAL', mail);
+  const cel = U.match(/(?:CELULAR|CEL\.?|MOVIL)\s*:?\s*([\d\s\-()]{10,16})/); if (cel){ const d = cel[1].replace(/\D/g, ''); if (d.length >= 10) put('CELULAR', d.slice(-10)); }
+  const tel = U.match(/(?:TEL[EÉ]FONO(?: PARTICULAR| DE CASA| FIJO)?|TEL\.)\s*:?\s*([\d\s\-()]{10,16})/); if (tel){ const d = tel[1].replace(/\D/g, ''); if (d.length >= 10) put('PARTICULAR 1', d.slice(-10)); }
+  return { tipo, out, notas };
+}
+// Lectura con Claude (solo en la página de aquí, donde hay cuenta de Claude)
+async function pfLeerClaude(file, text, images, s){
+  const claves = PF_CAMPOS.flatMap(([, fs]) => fs);
+  const prompt = `Eres analista KYC en México. Del documento "${file.name}" extrae SOLO datos de la persona física ${s.nombre}${s.rfc ? ' (RFC ' + s.rfc + ')' : ''} o de su cónyuge, para su KYC.
+Devuelve JSON: {"tipo_documento": "...", "titular": "nombre de quien es el documento", "campos": {"<clave>": "<valor>"}}.
+Claves permitidas (usa exactamente estas; omite las que no vengan):
+${claves.map(([k, l]) => `- "${k}": ${l}`).join('\n')}
+Reglas: domicilio particular (claves sin _2) de la INE o de un comprobante de domicilio; domicilio fiscal (claves con _2) SOLO de la Constancia de Situación Fiscal. INE: solo los 9 dígitos que siguen a IDMEX en el reverso. Si el documento es de otra persona que no es el cónyuge, devuelve "campos": {}. Todo en MAYÚSCULAS. No inventes datos.
+Texto del documento:
+${text.slice(0, 30000)}`;
+  const opts = { modelTier: 'complex' };
+  const per = LIMITS?.images?.maxCount || 0; if (images.length && per) opts.images = images.slice(0, per);
+  const r = await sample.json(prompt, opts);
+  const out = {}; for (const [k, v] of Object.entries((r && r.campos) || {})){ if (claves.some(([c]) => c === k) && v) out[k] = norm(PF_INE.includes(k) ? (String(v).replace(/\s/g, '').match(/(\d{9})\d?$/) || [''])[0] : v); }
+  return { tipo: (r && r.tipo_documento) || 'Documento', out, notas: r && r.titular ? ['de ' + norm(r.titular)] : [] };
+}
+async function pfSubir(s, files){
+  const X = pfX(s);
+  for (const file of files){
+    const it = { name: file.name, state: 'run', msg: 'Leyendo…' }; X.files.push(it); persist(); pfSig = ''; renderPF();
+    const setMsg = m => { it.msg = m; const n = document.querySelector(`[data-pffile="${CSS.escape(pfKey(s) + '|' + (X.files.length - 1))}"]`); if (n) n.textContent = file.name + ' · ' + m; };
+    try{
+      const { text, images } = await pfTexto(file, setMsg);
+      let r = null;
+      if (sample){ try { setMsg('Claude está leyendo…'); r = await pfLeerClaude(file, text, images, s); } catch(e){ r = null; } }
+      if (!r || !Object.keys(r.out).length){ const l = pfLeerLocal(text, s); if (!r || Object.keys(l.out).length) r = l; }
+      let n = 0; const dif = [];
+      for (const [k, v] of Object.entries(r.out)){
+        if (!v) continue;
+        const cur0 = X.v[k];
+        if (!cur0){ X.v[k] = v; X.src[k] = file.name; n++; }
+        else if (norm(cur0) !== norm(v)) dif.push(k);
+      }
+      it.state = 'done'; it.msg = `${r.tipo} · ${n} dato${n === 1 ? '' : 's'} nuevo${n === 1 ? '' : 's'}` + (r.notas.length ? ' · ' + r.notas.join(' · ') : '') + (dif.length ? ` · ${dif.length} distinto${dif.length === 1 ? '' : 's'} a lo ya capturado (se dejó lo anterior)` : '');
+    }catch(e){ it.state = 'err'; it.msg = (e && e.message) || 'No se pudo leer el archivo.'; }
+    persist(); pfSig = ''; renderPF();
+  }
+}
 let pfSig = '';
+const pfOpen = new Set();
 function renderPF(){
   const host = document.getElementById('pfList'); if (!host) return;
   const socios = pfSocios();
-  const sig = JSON.stringify([socios, socios.map(pfGenero), socios.map(pfEsRL), fechaOK()]);
+  const sig = JSON.stringify([socios, socios.map(pfGenero), socios.map(pfEsRL), fechaOK(), S.pfData || {}]);
   if (sig === pfSig) return; pfSig = sig;
   host.textContent = '';
   const el15 = socios.filter(s => s.pct !== null && s.pct >= PF_MIN), otros = socios.filter(s => !el15.includes(s));
@@ -2068,18 +2243,56 @@ function renderPF(){
       el('div', {class:'gd', text: (s.rfc || 'Sin RFC') + (s.fn ? ' · ' + s.fn : '') + (pm ? ' · Persona moral: no lleva KYC de persona física' : '')}));
     if (!pm){
       const row = el('div', {style:'display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:4px'});
-      if (rl && pfCurpRL()) row.append(el('span', {class:'gd', text:'Género ' + gen + ' (de la CURP)'}));
+      if (pfCurp(s)) row.append(el('span', {class:'gd', text:'Género ' + gen + ' (de la CURP)'}));
       else {
         row.append(el('span', {class:'gd', text:'Género:'}));
-        for (const g of ['M', 'F']) row.append(el('button', {class:'chip', type:'button', 'aria-pressed': String(gen === g), text: g, onclick: () => { S.pfGen = S.pfGen || {}; S.pfGen[s.rfc || s.nombre] = g; persist(); renderPF(); }}));
+        for (const g of ['M', 'F']) row.append(el('button', {class:'pfg', type:'button', 'aria-pressed': String(gen === g), text: g, onclick: () => { S.pfGen = S.pfGen || {}; S.pfGen[pfKey(s)] = g; persist(); renderPF(); }}));
       }
       row.append(el('button', {class:'btn primary' + (gen && fechaOK() ? '' : ' locked'), type:'button', style:'margin-left:auto', text:'Descargar KYC PF', title: !fechaOK() ? 'Falta la fecha del formato' : !gen ? 'Elige el género' : '', onclick: () => pfDescargar(s.i)}));
       li.append(row);
+      li.append(pfDetalle(s));
     }
     host.append(li);
   }
   if (otros.length) host.append(el('li', {}, el('div', {class:'gd', text:`Con menos de ${PF_MIN} %: ` + otros.map(s => s.nombre + (s.pct !== null ? ` (${Math.round(s.pct * 100) / 100} %)` : '')).join(', ') + '.'})));
-  if (el15.length) host.append(el('li', {}, el('div', {class:'gd', text:'Usa los datos de esta moral: nombre, RFC, fecha de nacimiento, empresa, contacto, fines y montos; si es el RL, también CURP, INE, estado civil y teléfonos. Domicilio particular y fiscal quedan en blanco.'})));
+}
+// Bloque "Completar datos": subir documentos del accionista y ver/escribir lo que falta
+function pfDetalle(s){
+  const X = pfX(s), key = pfKey(s), pend = pfPendientes(s);
+  const det = el('details', {class:'pfx'}); if (pfOpen.has(key)) det.open = true;
+  det.addEventListener('toggle', () => { if (det.open) pfOpen.add(key); else pfOpen.delete(key); });
+  det.append(el('summary', {text: pend.length ? `Completar datos · faltan ${pend.length}` : 'Datos completos · ver o corregir'}));
+  const inp = el('input', {type:'file', multiple:true, class:'hidden-input', tabindex:'-1'});
+  inp.addEventListener('change', () => { if (inp.files.length) pfSubir(s, [...inp.files]); inp.value = ''; });
+  const drop = el('div', {class:'pfdrop', tabindex:'0', role:'button', text:'Sube aquí los documentos de ' + s.nombre + ': INE (frente y reverso), Constancia de Situación Fiscal, comprobante de domicilio, acta de matrimonio, INE del cónyuge…', onclick: () => inp.click()});
+  drop.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); inp.click(); } });
+  drop.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); drop.classList.add('over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+  drop.addEventListener('drop', e => { e.preventDefault(); e.stopPropagation(); drop.classList.remove('over'); if (e.dataTransfer.files.length) pfSubir(s, [...e.dataTransfer.files]); });
+  det.append(drop, inp);
+  if (X.files.length){
+    const ul = el('ul', {class:'pffiles'});
+    X.files.forEach((f, j) => ul.append(el('li', {class: f.state, 'data-pffile': key + '|' + j, text: f.name + ' · ' + f.msg})));
+    det.append(ul);
+  }
+  const { t } = pfDatos(s);
+  for (const [tit, fs] of PF_CAMPOS){
+    det.append(el('div', {class:'pfsub', text: tit}));
+    const grid = el('div', {class:'pfgrid'});
+    for (const [k, lab] of fs){
+      const v = pfValor(t, k), mine = X.v[k] !== undefined && X.v[k] !== '';
+      const falta = !v && pend.some(p => p[0] === k);
+      const box = el('div', {class:'pff' + (falta ? ' falta' : v ? ' auto' : '')});
+      const id = 'pf-' + key.replace(/\W/g, '') + '-' + k.replace(/\W/g, '');
+      const ctl = el('input', {id, type:'text', autocomplete:'off', placeholder: falta ? 'Falta' : ''}); ctl.value = v;
+      ctl.addEventListener('change', () => { const nv = norm(ctl.value); if (nv){ X.v[k] = PF_INE.includes(k) ? nv.replace(/^INE\s*-\s*/, '').replace(/\D/g, '') : nv; X.src[k] = 'Captura manual'; } else { delete X.v[k]; delete X.src[k]; } persist(); pfSig = ''; renderPF(); });
+      box.append(el('label', {for: id, text: lab}), ctl, el('span', {class:'src', text: mine ? 'De ' + (X.src[k] || 'captura') : v ? 'Del KYC PM' : ''}));
+      grid.append(box);
+    }
+    det.append(grid);
+  }
+  det.append(el('div', {class:'gd', style:'margin-top:6px', text:'Lo que subas o escribas aquí solo va al KYC PF de este accionista; no cambia el KYC de la moral.'}));
+  return det;
 }
 
 /* ---------- UI ---------- */
