@@ -178,7 +178,7 @@ section.sec{background:var(--surface);border:1px solid var(--line);border-radius
 </style>
 
 <header class="top"><div class="top-in wrap">
-  <div class="brand"><b>KYC Persona Moral</b><span>Plantilla con datos fijos · versión 18/11/2026 00:20</span></div>
+  <div class="brand"><b>KYC Persona Moral</b><span>Plantilla con datos fijos · versión 18/11/2026 00:40</span></div>
   <div class="exp"><label for="expName">Expediente</label><input id="expName" placeholder="Ej. NOMBRE DE LA EMPRESA F/0394" autocomplete="off"></div>
   <div class="meter" title="Campos editables con valor"><div class="bar"><i id="barFill"></i></div><span id="meterTxt">0 / 0</span><small>editables</small></div>
   <div class="actions">
@@ -2104,26 +2104,33 @@ function pfPendientes(s){
   const { t } = pfDatos(s); const casado = /CASAD/.test(norm(t['ESTADO CIVIL']));
   return PF_CAMPOS.flatMap(([, fs]) => fs).filter(([k]) => !pfValor(t, k) && (!PF_OPC.has(k) || (casado && /CÓNYUGE|_2$|RÉGIMEN/.test(k) && !/AÑOS/.test(k))));
 }
-// Lectura de un documento del accionista: texto (y OCR de imágenes o páginas escaneadas)
+// Lectura de un documento del accionista: texto, más las imágenes (fotos, páginas escaneadas o con la INE pegada)
+// Con Claude (página de aquí) las imágenes van directo a Claude, sin OCR; sin Claude (liga) se leen con OCR en el navegador
 async function pfTexto(file, setMsg){
+  const conClaude = !!(sample && LIMITS?.images);
+  const ocr = async (img, lab) => await ocrText(img, p => setMsg(`${lab}: OCR ${Math.round(p * 100)}%`));
   const ext = (file.name.split('.').pop() || '').toLowerCase();
   if (IMG_EXT.includes(ext) || (file.type || '').startsWith('image/')){
-    const img = await toJpeg(file, 2400); return { text: await ocrText(img, p => setMsg(`OCR ${Math.round(p * 100)}%`)), images: [img] };
+    const img = await toJpeg(file, 2400);
+    return { text: conClaude ? '' : await ocr(img, 'Imagen'), images: [img] };
   }
   const buf = await file.arrayBuffer();
   if (ext === 'pdf'){
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     const pdf = await pdfjsLib.getDocument({ data: buf }).promise; const n = Math.min(pdf.numPages, 12);
+    const OPS = pdfjsLib.OPS, IMG_OPS = new Set([OPS.paintImageXObject, OPS.paintJpegXObject, OPS.paintInlineImageXObject, OPS.paintImageXObjectRepeat].filter(x => x !== undefined));
     let text = ''; const images = [];
     for (let i = 1; i <= n; i++){
       setMsg(`Leyendo página ${i} de ${n}…`);
       const pg = await pdf.getPage(i); const tc = await pg.getTextContent();
       let t = '', lastY = null; for (const it of tc.items){ const y = it.transform ? Math.round(it.transform[5]) : null; if (lastY !== null && y !== lastY) t += '\n'; else if (t) t += ' '; t += it.str; lastY = y; }
-      if (t.replace(/\s/g, '').length < 40 && images.length < 4){
+      let conFoto = false; try { const ol = await pg.getOperatorList(); conFoto = ol.fnArray.some(f => IMG_OPS.has(f)); } catch(_){}
+      // Página escaneada o con fotos (p. ej. reportes «ID_…_valid.pdf» con la INE pegada): se toma como imagen
+      if ((t.replace(/\s/g, '').length < 40 || conFoto) && images.length < 4){
         const vp = pg.getViewport({ scale: 2.2 }); const c = document.createElement('canvas'); c.width = vp.width; c.height = vp.height;
         await pg.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
         const img = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.85)); images.push(img);
-        t = await ocrText(img, p => setMsg(`Página ${i} es imagen: OCR ${Math.round(p * 100)}%`));
+        if (!conClaude) t += '\n' + await ocr(img, `Página ${i}`);
       }
       text += '\n' + t;
     }
@@ -2198,17 +2205,18 @@ function pfLeerLocal(text, s){
 async function pfLeerClaude(file, text, images, s){
   const claves = PF_CAMPOS.flatMap(([, fs]) => fs);
   const prompt = `Eres analista KYC en México. Del documento "${file.name}" extrae SOLO datos de la persona física ${s.nombre}${s.rfc ? ' (RFC ' + s.rfc + ')' : ''} o de su cónyuge, para su KYC.
-Devuelve JSON: {"tipo_documento": "...", "titular": "nombre de quien es el documento", "campos": {"<clave>": "<valor>"}}.
+Devuelve JSON: {"tipo_documento": "...", "titular": "nombre de quien es el documento", "es_ine_del_accionista": true|false, "campos": {"<clave>": "<valor>"}}.
+"es_ine_del_accionista" es true solo si el documento es o contiene la INE (credencial para votar) de ${s.nombre}, aunque venga dentro de un reporte de validación.
 Claves permitidas (usa exactamente estas; omite las que no vengan):
 ${claves.map(([k, l]) => `- "${k}": ${l}`).join('\n')}
 Reglas: domicilio particular (claves sin _2) de la INE o de un comprobante de domicilio; domicilio fiscal (claves con _2) SOLO de la Constancia de Situación Fiscal. CURP, INE, fecha de nacimiento y entidad de nacimiento SOLO de la INE (credencial para votar) del accionista; de cualquier otro documento omítelos. INE: solo los 9 dígitos que siguen a IDMEX en el reverso. Si el documento es de otra persona que no es el cónyuge, devuelve "campos": {}. Todo en MAYÚSCULAS. No inventes datos.
-Texto del documento:
-${text.slice(0, 30000)}`;
+${images.length ? 'Se adjuntan imágenes de las páginas del documento (fotos o páginas escaneadas): léelas.\n' : ''}Texto del documento:
+${text.slice(0, 30000) || '(sin texto; ver imágenes)'}`;
   const opts = { modelTier: 'complex' };
   const per = LIMITS?.images?.maxCount || 0; if (images.length && per) opts.images = images.slice(0, per);
   const r = await sample.json(prompt, opts);
   const out = {}; for (const [k, v] of Object.entries((r && r.campos) || {})){ if (claves.some(([c]) => c === k) && v) out[k] = norm(PF_INE.includes(k) ? (String(v).replace(/\s/g, '').match(/(\d{9})\d?$/) || [''])[0] : v); }
-  return { tipo: (r && r.tipo_documento) || 'Documento', out, notas: r && r.titular ? ['de ' + norm(r.titular)] : [] };
+  return { tipo: (r && r.tipo_documento) || 'Documento', out, notas: r && r.titular ? ['de ' + norm(r.titular)] : [], ine: !!(r && r.es_ine_del_accionista) };
 }
 async function pfSubir(s, files){
   const X = pfX(s);
@@ -2218,10 +2226,12 @@ async function pfSubir(s, files){
     try{
       const { text, images } = await pfTexto(file, setMsg);
       let r = null;
-      if (sample){ try { setMsg('Claude está leyendo…'); r = await pfLeerClaude(file, text, images, s); } catch(e){ r = null; } }
+      let errClaude = '';
+      if (sample){ try { setMsg('Claude está leyendo…'); r = await pfLeerClaude(file, text, images, s); } catch(e){ r = null; errClaude = errMsg(e); } }
+      if (!r && errClaude && !text.trim()) throw new Error(errClaude);
       if (!r || !Object.keys(r.out).length){ const l = pfLeerLocal(text, s); if (!r || Object.keys(l.out).length) r = l; }
       let n = 0; const dif = [];
-      const esINE = /\bINE\b|CREDENCIAL|ELECTORAL/i.test(r.tipo) && !/C[OÓ]NYUGE/i.test(r.tipo);
+      const esINE = r.ine !== undefined ? r.ine : (/\bINE\b|CREDENCIAL|ELECTORAL/i.test(r.tipo) && !/C[OÓ]NYUGE/i.test(r.tipo));
       for (const [k, v] of Object.entries(r.out)){
         if (!v) continue;
         if (PF_DE_INE.includes(k) && !esINE) continue;
