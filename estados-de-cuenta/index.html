@@ -1950,7 +1950,18 @@ const HEYBANCO=Object.assign({},BANREGIO,{
   producerName:'Crystal Reports (Powered By Crystal) · Hey Banco, marca de Banregio',
   detect:pdf=>{
     const t=firstText(pdf,3);
-    return /\bhey,?\s*banco\b/i.test(t)&&/banco regional|banregio/i.test(t);
+    // Descartar primero otros bancos que pueden mencionar "HEY BANCO" en el detalle
+    // como contraparte de un SPEI (BCO:0167 HEY BANCO HR LIQ:...).
+    if(/Banco Mercantil del Norte|\bBMN\d{6}/i.test(t)) return false; // Banorte
+    if(/BBVA\s+MEXICO|BBVA\s+BANCOMER/i.test(t)&&!/\bHey,\s*Banco\b/i.test(t)) return false;
+    if(/BANCO\s+INBURSA|BII931004P61/i.test(t)) return false;
+    if(/BANCO\s+SANTANDER\s+M[EÉ]XICO/i.test(t)&&!/\bHey,\s*Banco\b/i.test(t)) return false;
+    // Para Hey Banco: filtrar menciones que vienen como contraparte en SPEI, y requerir
+    // marca en el encabezado o pie del documento, no sólo en el detalle.
+    const cleanT=t.replace(/BCO:\s*\d+\s+HEY\s+BANCO/gi,'').replace(/CLIENTE\s+HEY[\s,]*BANCO/gi,'');
+    const hasOfficial=/\bHey,\s*Banco\b/.test(t)||/hey\.banco|heybanco\.com/i.test(t);
+    const hasGeneric=/\bhey,?\s*banco\b/i.test(cleanT)&&/banco regional|banregio/i.test(cleanT);
+    return hasOfficial||hasGeneric;
   }
 });
 /* ---------- Scotiabank DÉBITO EMPRESARIAL / RED DE SUCURSAL ---------- */
