@@ -1,0 +1,883 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Collage de fotos</title>
+<style>
+  :root{
+    --bg:#f4f5f7; --surface:#ffffff; --surface-2:#eceff3; --border:#dce0e6;
+    --text:#151a22; --muted:#5f6876; --accent:#1f3a68; --accent-ink:#ffffff;
+    --tag:#5c8714; --danger:#b42318; --desk:#e2e5ea; --focus:#2563eb;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; --radius:12px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0f1217; --surface:#171b22; --surface-2:#222833; --border:#2c333e;
+      --text:#e8ebf0; --muted:#9aa3b0; --accent:#8fb0ff; --accent-ink:#0b1020;
+      --tag:#a6d05a; --danger:#ff8a7a; --desk:#0a0d11; color-scheme:dark;
+    }
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none!important}
+  body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 "Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif}
+  .wrap{max-width:1320px;margin:0 auto;padding:28px 20px 40px}
+  .hero{display:flex;flex-wrap:wrap;gap:14px 40px;align-items:flex-end;justify-content:space-between;margin:0 0 22px}
+  .hero-main{flex:1 1 520px;min-width:0}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--tag);margin:0 0 6px}
+  h1{font-size:30px;line-height:1.15;margin:0 0 8px;letter-spacing:-.01em}
+  .lead{margin:0;color:var(--muted);max-width:72ch}
+  .privacy{flex:0 1 330px;display:flex;gap:10px;align-items:flex-start;margin:0;font-size:13px;color:var(--muted);line-height:1.45}
+  .privacy svg{flex:none;width:18px;height:18px;color:var(--tag);margin-top:1px}
+
+  .app{display:grid;grid-template-columns:minmax(0,1fr) 316px;gap:20px;align-items:start}
+  @media (max-width:920px){.app{grid-template-columns:1fr}}
+  .stage{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;min-width:0}
+  .bar{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;margin-bottom:12px}
+  .hint{color:var(--muted);font-size:13px;flex:1 1 220px;line-height:1.35}
+  .seg{display:inline-flex;background:var(--surface-2);border-radius:9px;padding:3px;gap:2px;flex-wrap:wrap}
+  .seg button{border:0;background:transparent;color:var(--muted);font:inherit;font-size:13px;font-weight:600;padding:6px 11px;border-radius:7px;cursor:pointer;min-width:34px}
+  .seg button.on{background:var(--surface);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.14)}
+  .seg button:focus-visible,.btn:focus-visible,.linkbtn:focus-visible,.empty:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+
+  .desk{position:relative;background:var(--desk);border-radius:10px;padding:20px;display:flex;justify-content:center;align-items:flex-start;min-height:420px}
+  .desk.over{outline:2px dashed var(--focus);outline-offset:-8px}
+  .sheet{position:relative;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.16),0 10px 28px rgba(0,0,0,.14)}
+  .sheet canvas{display:block;width:100%;height:100%;touch-action:none}
+  .empty{width:100%;min-height:380px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;border:1.5px dashed #aab2bf;border-radius:10px;background:var(--surface);cursor:pointer;padding:24px;color:var(--muted)}
+  .empty:hover{border-color:var(--focus)}
+  .empty svg{width:42px;height:42px;color:var(--tag);margin-bottom:6px}
+  .empty strong{font-size:18px;color:var(--text)}
+  .empty .fine{font-size:13px;margin-top:4px}
+
+  .tools{position:absolute;z-index:2;display:grid;grid-auto-flow:column;gap:3px;padding:3px;border-radius:9px;background:rgba(12,16,24,.62);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
+  .tools.narrow{grid-auto-flow:row;grid-template-columns:repeat(2,26px)}
+  .tools button{width:26px;height:26px;border:0;border-radius:6px;background:transparent;color:#fff;display:grid;place-items:center;cursor:pointer;padding:0}
+  .tools button:hover{background:rgba(255,255,255,.2)}
+  .tools button[data-act="remove"]:hover{background:#c0392b}
+  .tools svg{width:15px;height:15px}
+  .status{margin:10px 2px 0;font-size:13px;color:var(--muted);min-height:20px}
+  .status b{color:var(--text);font-weight:600}
+
+  .panel{display:flex;flex-direction:column;gap:14px;position:sticky;top:14px}
+  @media (max-width:920px){.panel{position:static}}
+  .group{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px}
+  .group h2{font-family:var(--mono);font-size:12px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+  .field{display:flex;flex-direction:column;gap:5px;margin:0 0 12px}
+  .field:last-child{margin-bottom:0}
+  .field > span{font-size:13px;font-weight:600}
+  select,input[type=text]{font:inherit;font-size:14px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);width:100%}
+  select:focus,input[type=text]:focus{outline:2px solid var(--focus);outline-offset:0;border-color:transparent}
+  .range{display:flex;align-items:center;gap:10px}
+  .range input{flex:1;accent-color:var(--accent)}
+  .range output{font-variant-numeric:tabular-nums;font-size:13px;min-width:56px;text-align:right;color:var(--muted)}
+  .check{display:flex;gap:8px;align-items:center;font-size:14px;font-weight:600;cursor:pointer;margin-top:2px}
+  .check input{width:16px;height:16px;accent-color:var(--accent)}
+  .titles{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+  #titleInputs{display:flex;flex-direction:column;gap:6px}
+  .colorrow{display:flex;align-items:center;justify-content:space-between;font-size:13px;font-weight:600}
+  .colorrow input{width:44px;height:28px;border:1px solid var(--border);border-radius:6px;background:var(--surface);padding:2px;cursor:pointer}
+  .btn{font:inherit;font-size:14px;font-weight:600;border-radius:9px;padding:9px 14px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer}
+  .btn:hover:not(:disabled){border-color:var(--muted)}
+  .btn.sm{font-size:13px;padding:6px 11px}
+  .btn.full{width:100%}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .btns .primary{grid-column:1/-1}
+  .small{font-size:12.5px;color:var(--muted);margin:8px 0 0;line-height:1.45}
+  .foot-actions{display:flex;justify-content:space-between;gap:10px;padding:0 4px}
+  .linkbtn{background:none;border:0;color:var(--muted);font:inherit;font-size:13px;cursor:pointer;padding:4px 2px;text-decoration:underline;text-underline-offset:3px}
+  .linkbtn.danger{color:var(--danger)}
+  .linkbtn:disabled{opacity:.45;cursor:not-allowed}
+  .foot{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:22px;font-size:13px;color:var(--muted)}
+  .foot a{color:var(--muted)}
+  .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);max-width:min(560px,calc(100vw - 32px));background:#1d2532;color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;box-shadow:0 8px 28px rgba(0,0,0,.25);z-index:20}
+  .toast.err{background:#8f1d14}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="hero">
+    <div class="hero-main">
+      <p class="eyebrow">Finsus · Anticipa · Mesa de control</p>
+      <h1>Collage de fotos</h1>
+      <p class="lead">Sube las fotos y la herramienta las acomoda en filas dentro de una hoja. Puedes cambiarlas de lugar, pasar una foto de vertical a horizontal, mover el encuadre y ponerle título a cada fila. Lo descargas en Word, ya ajustado a una sola hoja, o como imagen.</p>
+    </div>
+    <p class="privacy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span>Las fotos se procesan dentro de tu navegador. No se suben ni se guardan en ningún servidor.</span></p>
+  </header>
+
+  <div class="app">
+    <section class="stage" aria-label="Vista previa de la hoja">
+      <div class="bar">
+        <div class="seg" id="modeSeg" role="group" aria-label="Qué hace arrastrar una foto">
+          <button type="button" data-mode="swap" class="on">Cambiar de lugar</button>
+          <button type="button" data-mode="pan">Mover encuadre</button>
+        </div>
+        <span class="hint" id="hint"></span>
+        <button type="button" class="btn sm" id="btnUndo" disabled title="Deshacer (Ctrl+Z)">Deshacer</button>
+        <button type="button" class="btn sm" id="btnAdd">Agregar fotos</button>
+      </div>
+      <div class="desk" id="desk">
+        <div class="empty" id="empty" role="button" tabindex="0" aria-label="Elegir fotos">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="8.5" cy="9.5" r="1.8"/><path d="m21 15-4.5-4.5L7 20"/></svg>
+          <strong>Arrastra aquí tus fotos</strong>
+          <span>o haz clic para elegirlas. También puedes pegarlas con <span id="pasteKey">Ctrl+V</span>.</span>
+          <span class="fine">JPG, PNG o WebP. Se acomodan en filas y se ajustan para que quepan en una hoja.</span>
+        </div>
+        <div class="sheet" id="sheet" hidden>
+          <canvas id="cv" aria-label="Vista previa del collage en la hoja"></canvas>
+          <div class="tools" id="tools" hidden>
+            <button type="button" data-act="rotate" title="Rotar 90°" aria-label="Rotar 90°"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1"/><path d="M20.5 3.5v5h-5"/></svg></button>
+            <button type="button" data-act="orient" title="Pasar a vertical" aria-label="Pasar a vertical"></button>
+            <button type="button" data-act="center" title="Centrar encuadre" aria-label="Centrar encuadre"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4"/></svg></button>
+            <button type="button" data-act="remove" title="Quitar foto" aria-label="Quitar foto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+          </div>
+        </div>
+      </div>
+      <p class="status" id="status" aria-live="polite"></p>
+    </section>
+
+    <aside class="panel" aria-label="Ajustes">
+      <div class="group">
+        <h2>Hoja</h2>
+        <label class="field"><span>Tamaño</span>
+          <select id="page">
+            <option value="carta">Carta · 21.6 × 27.9 cm</option>
+            <option value="oficio">Oficio · 21.6 × 34 cm</option>
+            <option value="a4">A4 · 21 × 29.7 cm</option>
+          </select>
+        </label>
+        <div class="field"><span>Orientación</span>
+          <div class="seg" id="orientSeg" role="group" aria-label="Orientación de la hoja">
+            <button type="button" data-v="0">Vertical</button><button type="button" data-v="1">Horizontal</button>
+          </div>
+        </div>
+        <label class="field"><span>Márgenes</span>
+          <select id="margins">
+            <option value="moderados">Moderados · 2.54 y 1.91 cm</option>
+            <option value="normales">Normales · 2.5 y 3 cm</option>
+            <option value="estrechos">Estrechos · 1.27 cm</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="group">
+        <h2>Acomodo</h2>
+        <div class="field"><span>Fotos por fila</span>
+          <div class="seg" id="perRowSeg" role="group" aria-label="Fotos por fila">
+            <button type="button" data-v="2">2</button><button type="button" data-v="3">3</button><button type="button" data-v="4">4</button><button type="button" data-v="5">5</button><button type="button" data-v="6">6</button>
+          </div>
+        </div>
+        <label class="field"><span>Forma de las fotos</span>
+          <select id="fit">
+            <option value="orient">Horizontales 4:3 y verticales 3:4</option>
+            <option value="original">Proporción original, sin recortar</option>
+            <option value="square">Todas cuadradas</option>
+            <option value="h">Todas horizontales 4:3</option>
+            <option value="v">Todas verticales 3:4</option>
+          </select>
+        </label>
+        <button type="button" class="btn full" id="btnArrange" disabled>Ordenar filas</button>
+        <p class="small">Pone las horizontales en los extremos de cada fila y las verticales al centro. Si cada fila lleva las mismas horizontales y verticales (por ejemplo, dos y dos), las columnas quedan alineadas. El formato de cada foto se cambia con el botón que aparece al pasar el cursor sobre ella.</p>
+      </div>
+
+      <div class="group">
+        <h2>Detalles</h2>
+        <div class="field"><span>Separación entre fotos</span>
+          <div class="range"><input type="range" id="gap" min="0" max="6" step="0.1" aria-label="Separación entre fotos"><output id="gapOut"></output></div>
+        </div>
+        <div class="field"><span>Esquinas redondeadas</span>
+          <div class="range"><input type="range" id="radius" min="0" max="4" step="0.1" aria-label="Esquinas redondeadas"><output id="radiusOut"></output></div>
+        </div>
+        <label class="check"><input type="checkbox" id="titles"> Título en cada fila</label>
+        <div class="titles" id="titlesBox" hidden>
+          <div id="titleInputs"></div>
+          <label class="colorrow">Color de la marca <input type="color" id="accent" aria-label="Color de la marca de los títulos"></label>
+        </div>
+      </div>
+
+      <div class="group">
+        <h2>Descargar</h2>
+        <label class="field"><span>Nombre del archivo</span><input type="text" id="fileName" value="Collage" maxlength="80" autocomplete="off"></label>
+        <div class="btns">
+          <button type="button" class="btn primary" id="btnWord" disabled>Descargar Word</button>
+          <button type="button" class="btn" id="btnJpg" disabled>Imagen JPG</button>
+          <button type="button" class="btn" id="btnCopy" disabled>Copiar imagen</button>
+        </div>
+        <p class="small">El Word sale con el collage ya colocado en una sola hoja. Con «Copiar imagen» lo pegas en un Word que ya tengas abierto.</p>
+      </div>
+
+      <div class="foot-actions">
+        <button type="button" class="linkbtn" id="btnReset">Restablecer ajustes</button>
+        <button type="button" class="linkbtn danger" id="btnClear" disabled>Quitar todas las fotos</button>
+      </div>
+    </aside>
+  </div>
+
+  <footer class="foot"><a href="../">← Todas las herramientas</a><span>Versión 19-nov-2026</span></footer>
+</div>
+<input type="file" id="file" accept="image/*" multiple hidden>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ---------- Medidas (todo se calcula en milímetros) ----------
+  const DPI = 300, PX_PER_MM = DPI / 25.4;
+  const PAGES = { carta:{w:215.9, h:279.4}, oficio:{w:215.9, h:340.1}, a4:{w:210, h:297} };
+  const MARGINS = {
+    moderados:{t:25.4, b:25.4, l:19.05, r:19.05},
+    normales:{t:25, b:25, l:30, r:30},
+    estrechos:{t:12.7, b:12.7, l:12.7, r:12.7}
+  };
+  const TITLE = {band:5.25, gap:1.2, rowGap:3.9, font:3.39, barW:0.68, barH:3.2, textX:2.03, ruleGap:2.2, rule:0.17};
+  const SAFE_MM = 3;            // holgura para que Word no mande la imagen a otra hoja
+  const INK = '#1f2f4d', RULE = '#dadfe6';
+  const FONT_STACK = '"Segoe UI","Helvetica Neue",Helvetica,Arial,sans-serif';
+  const DEFAULTS = {page:'carta', landscape:false, margins:'moderados', perRow:4, fit:'orient', gap:1.4, radius:0.8, titles:false, accent:'#94ba2c'};
+  const FITS = ['orient', 'original', 'square', 'h', 'v'];
+  const KEY = 'mdc-collage-fotos-ajustes';
+  const ICON_V = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="7" y="3.5" width="10" height="17" rx="1.8"/></svg>';
+  const ICON_H = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3.5" y="7" width="17" height="10" rx="1.8"/></svg>';
+
+  const state = Object.assign({photos:[], rowTitles:[], mode:'swap'}, DEFAULTS);
+  const history = [];
+  let seq = 0, rects = [], drag = null, hoverP = null, toolsFor = null, busy = false, raf = 0, toastTimer = 0;
+
+  const $ = id => document.getElementById(id);
+  const el = {
+    desk:$('desk'), empty:$('empty'), sheet:$('sheet'), cv:$('cv'), tools:$('tools'), status:$('status'), hint:$('hint'),
+    file:$('file'), page:$('page'), margins:$('margins'), fit:$('fit'), gap:$('gap'), gapOut:$('gapOut'),
+    radius:$('radius'), radiusOut:$('radiusOut'), titles:$('titles'), titlesBox:$('titlesBox'), titleInputs:$('titleInputs'),
+    accent:$('accent'), fileName:$('fileName'), btnWord:$('btnWord'), btnJpg:$('btnJpg'), btnCopy:$('btnCopy'),
+    btnUndo:$('btnUndo'), btnAdd:$('btnAdd'), btnArrange:$('btnArrange'), btnClear:$('btnClear'), btnReset:$('btnReset'), toast:$('toast')
+  };
+  const ctx = el.cv.getContext('2d');
+  const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '');
+  if (isMac) $('pasteKey').textContent = '⌘V';
+
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  const tick = () => new Promise(r => setTimeout(r, 0));
+  const fmtMm = v => `${(+v).toFixed(1)} mm`;
+  const fmtCm = mm => (mm / 10).toFixed(1);
+
+  // ---------- Ajustes guardados en este navegador ----------
+  function loadSettings(){
+    try {
+      const s = JSON.parse(localStorage.getItem(KEY) || '{}');
+      for (const k of Object.keys(DEFAULTS)) if (k in s && typeof s[k] === typeof DEFAULTS[k]) state[k] = s[k];
+    } catch (e) {}
+    if (!PAGES[state.page]) state.page = DEFAULTS.page;
+    if (!MARGINS[state.margins]) state.margins = DEFAULTS.margins;
+    if (!FITS.includes(state.fit)) state.fit = DEFAULTS.fit;
+    state.perRow = clamp(Math.round(state.perRow) || 4, 2, 6);
+    state.gap = clamp(+state.gap || 0, 0, 6);
+    state.radius = clamp(+state.radius || 0, 0, 4);
+    if (!/^#[0-9a-f]{6}$/i.test(state.accent)) state.accent = DEFAULTS.accent;
+  }
+  function saveSettings(){
+    try { const o = {}; for (const k of Object.keys(DEFAULTS)) o[k] = state[k]; localStorage.setItem(KEY, JSON.stringify(o)); } catch (e) {}
+  }
+
+  // ---------- Controles ----------
+  function setSeg(id, value, attr){
+    for (const b of $(id).querySelectorAll('button')) b.classList.toggle('on', b.dataset[attr || 'v'] === value);
+  }
+  function syncControls(){
+    el.page.value = state.page; el.margins.value = state.margins; el.fit.value = state.fit;
+    el.gap.value = state.gap; el.radius.value = state.radius; el.titles.checked = state.titles; el.accent.value = state.accent;
+    el.gapOut.textContent = fmtMm(state.gap); el.radiusOut.textContent = fmtMm(state.radius);
+    setSeg('orientSeg', state.landscape ? '1' : '0'); setSeg('perRowSeg', String(state.perRow)); setSeg('modeSeg', state.mode, 'mode');
+    el.titlesBox.hidden = !state.titles;
+    el.hint.textContent = state.mode === 'pan'
+      ? 'Arrastra dentro de una foto para elegir qué parte se ve.'
+      : 'Arrastra una foto sobre otra para cambiarlas de lugar. Pasa el cursor sobre una foto para ver sus opciones.';
+  }
+  function changed(){ saveSettings(); syncControls(); rebuildTitleInputs(); render(); }
+
+  $('orientSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; state.landscape = b.dataset.v === '1'; changed(); });
+  $('perRowSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; state.perRow = +b.dataset.v; changed(); });
+  $('modeSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; state.mode = b.dataset.mode; syncControls(); hideTools(); render(); });
+  el.page.addEventListener('change', () => { state.page = el.page.value; changed(); });
+  el.margins.addEventListener('change', () => { state.margins = el.margins.value; changed(); });
+  el.fit.addEventListener('change', () => { state.fit = el.fit.value; changed(); });
+  el.gap.addEventListener('input', () => { state.gap = +el.gap.value; changed(); });
+  el.radius.addEventListener('input', () => { state.radius = +el.radius.value; changed(); });
+  el.titles.addEventListener('change', () => { state.titles = el.titles.checked; changed(); });
+  el.accent.addEventListener('input', () => { state.accent = el.accent.value; changed(); });
+
+  function rowCount(){ return Math.ceil(state.photos.length / state.perRow); }
+  function rebuildTitleInputs(){
+    if (!state.titles){ el.titleInputs.innerHTML = ''; return; }
+    const n = Math.max(1, rowCount());
+    if (el.titleInputs.children.length === n) return;
+    el.titleInputs.innerHTML = '';
+    for (let i = 0; i < n; i++){
+      const inp = document.createElement('input');
+      inp.type = 'text'; inp.maxLength = 120; inp.value = state.rowTitles[i] || '';
+      inp.placeholder = `Título de la fila ${i + 1}`; inp.setAttribute('aria-label', `Título de la fila ${i + 1}`);
+      inp.addEventListener('input', () => { state.rowTitles[i] = inp.value; render(); });
+      el.titleInputs.appendChild(inp);
+    }
+  }
+  function updateButtons(){
+    const none = !state.photos.length;
+    for (const b of [el.btnWord, el.btnJpg, el.btnCopy, el.btnArrange, el.btnClear]) b.disabled = none || busy;
+    el.btnAdd.disabled = busy;
+    el.btnUndo.disabled = !history.length || busy;
+  }
+  function setStatus(html){ el.status.innerHTML = html; }
+  function flash(msg, isErr){
+    el.toast.textContent = msg; el.toast.classList.toggle('err', !!isErr); el.toast.hidden = false;
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.toast.hidden = true; }, isErr ? 9000 : 3500);
+  }
+
+  // ---------- Deshacer ----------
+  function pushHistory(){
+    history.push(state.photos.map(p => ({p, rot:p.rot, orient:p.orient, fx:p.fx, fy:p.fy})));
+    if (history.length > 80) history.shift();
+    updateButtons();
+  }
+  function undo(){
+    if (busy) return;
+    const snap = history.pop(); if (!snap) return;
+    state.photos = snap.map(s => {
+      const p = s.p;
+      if (p.rot !== s.rot){ p.rot = s.rot; applyRotation(p); }
+      p.orient = s.orient; p.fx = s.fx; p.fy = s.fy;
+      return p;
+    });
+    hideTools(); rebuildTitleInputs(); updateButtons(); render();
+  }
+
+  // ---------- Imágenes ----------
+  function makeCanvas(w, h){ const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w)); c.height = Math.max(1, Math.round(h)); return c; }
+  const dims = src => ({w: src.naturalWidth || src.width, h: src.naturalHeight || src.height});
+
+  async function decode(file){
+    if (window.createImageBitmap){
+      try { return await createImageBitmap(file, {imageOrientation:'from-image'}); } catch (e) {}
+    }
+    return await new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file), img = new Image();
+      img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('No se pudo leer la imagen')); };
+      img.src = url;
+    });
+  }
+  // Reduce una región a la mitad las veces necesarias para que el último paso no pixele la foto.
+  function downscale(src, sx, sy, sw, sh, tw, th){
+    let img = src, x = sx, y = sy, w = sw, h = sh;
+    while (w / 2 >= tw && h / 2 >= th && w > 2 && h > 2){
+      const nw = Math.round(w / 2), nh = Math.round(h / 2), c = makeCanvas(nw, nh), g = c.getContext('2d');
+      g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+      g.drawImage(img, x, y, w, h, 0, 0, nw, nh);
+      img = c; x = 0; y = 0; w = nw; h = nh;
+    }
+    return {img, sx:x, sy:y, sw:w, sh:h};
+  }
+  function makeThumb(src, w, h, max){
+    const s = Math.min(1, max / Math.max(w, h)), tw = Math.round(w * s), th = Math.round(h * s);
+    const d = downscale(src, 0, 0, w, h, tw, th), c = makeCanvas(tw, th), g = c.getContext('2d');
+    g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+    g.drawImage(d.img, d.sx, d.sy, d.sw, d.sh, 0, 0, tw, th);
+    return c;
+  }
+  function rotated(src, w, h, rot){
+    if (!rot) return {img:src, w, h};
+    const turn = rot % 180 !== 0, c = makeCanvas(turn ? h : w, turn ? w : h), g = c.getContext('2d');
+    g.translate(c.width / 2, c.height / 2); g.rotate(rot * Math.PI / 180); g.drawImage(src, -w / 2, -h / 2);
+    return {img:c, w:c.width, h:c.height};
+  }
+  function applyRotation(p){
+    p.thumb = rotated(p.base, p.base.width, p.base.height, p.rot).img;
+    const turn = p.rot % 180 !== 0;
+    p.w = turn ? p.h0 : p.w0; p.h = turn ? p.w0 : p.h0;
+  }
+
+  async function addFiles(list){
+    const files = [...list].filter(f => /^image\//.test(f.type) || /\.(jpe?g|png|webp|gif|bmp|avif|heic|heif)$/i.test(f.name));
+    if (!files.length){ flash('Esos archivos no son imágenes.', true); return; }
+    if (busy) return;
+    busy = true; updateButtons();
+    const before = state.photos.length;
+    pushHistory();
+    const bad = [];
+    for (let i = 0; i < files.length; i++){
+      setStatus(`Cargando foto ${i + 1} de ${files.length}…`);
+      const f = files[i];
+      try {
+        const src = await decode(f), d = dims(src);
+        if (!d.w || !d.h) throw new Error('vacía');
+        const base = makeThumb(src, d.w, d.h, 900);
+        if (src.close) src.close();
+        state.photos.push({id:++seq, file:f, name:f.name, w0:d.w, h0:d.h, w:d.w, h:d.h, rot:0, base, thumb:base, orient:d.w >= d.h ? 'H' : 'V', fx:.5, fy:.5});
+      } catch (e) { bad.push(f.name); }
+      if (i % 3 === 2){ draw(); await tick(); }
+    }
+    busy = false;
+    if (state.photos.length === before) history.pop();
+    rebuildTitleInputs(); updateButtons(); render();
+    if (bad.length) flash(`No se pudieron abrir: ${bad.join(', ')}. Si son fotos HEIC de iPhone, conviértelas antes a JPG.`, true);
+  }
+
+  // ---------- Acomodo ----------
+  function cellAspect(p){
+    switch (state.fit){
+      case 'original': return p.w / p.h;
+      case 'square': return 1;
+      case 'h': return 4 / 3;
+      case 'v': return 3 / 4;
+      default: return p.orient === 'H' ? 4 / 3 : 3 / 4;
+    }
+  }
+  function pageBox(){
+    const pg = PAGES[state.page], m = MARGINS[state.margins];
+    const W = state.landscape ? pg.h : pg.w, H = state.landscape ? pg.w : pg.h;
+    return {W, H, m, cw: W - m.l - m.r, ch: H - m.t - m.b};
+  }
+  // Filas del mismo ancho: cada foto conserva su forma y la altura de la fila se ajusta.
+  function layoutAt(width){
+    const g = state.gap, n = state.perRow, P = state.photos, rows = [];
+    for (let i = 0; i < P.length; i += n){
+      const r = P.slice(i, i + n), a = r.map(cellAspect), sum = a.reduce((s, x) => s + x, 0);
+      rows.push({r, a, h:(width - (r.length - 1) * g) / sum, start:i});
+    }
+    if (rows.length > 1 && rows[rows.length - 1].r.length < n){
+      const hs = rows.slice(0, -1).map(x => x.h).sort((a, b) => a - b);
+      const last = rows[rows.length - 1];
+      last.h = Math.min(last.h, hs[Math.floor(hs.length / 2)]);
+    }
+    const T = state.titles, rowGap = T ? TITLE.rowGap : g, cells = [], heads = [];
+    let y = 0;
+    rows.forEach((row, ri) => {
+      if (T){ heads.push({ri, y}); y += TITLE.band + TITLE.gap; }
+      const rowW = row.a.reduce((s, x) => s + x * row.h, 0) + (row.r.length - 1) * g;
+      let x = (width - rowW) / 2;
+      row.r.forEach((p, i) => { const w = row.a[i] * row.h; cells.push({p, x, y, w, h:row.h}); x += w + g; });
+      y += row.h + (ri < rows.length - 1 ? rowGap : 0);
+    });
+    return {w:width, h:y, cells, heads, rows:rows.length};
+  }
+  function computeLayout(){
+    const pb = pageBox(), maxH = pb.ch - SAFE_MM;
+    let L = layoutAt(pb.cw), scaled = false;
+    if (L.h > maxH && state.photos.length){
+      let lo = 5, hi = pb.cw;
+      for (let i = 0; i < 40; i++){ const mid = (lo + hi) / 2; if (layoutAt(mid).h > maxH) hi = mid; else lo = mid; }
+      L = layoutAt(lo); scaled = true;
+    }
+    L.pb = pb; L.scaled = scaled; L.ratio = L.w / pb.cw;
+    L.ox = pb.m.l + (pb.cw - L.w) / 2; L.oy = pb.m.t;
+    return L;
+  }
+
+  // ---------- Dibujo (mismo código para la vista previa y la descarga) ----------
+  function snap(c, s, ox, oy){
+    const x0 = Math.round(ox + c.x * s), y0 = Math.round(oy + c.y * s);
+    const x1 = Math.round(ox + (c.x + c.w) * s), y1 = Math.round(oy + (c.y + c.h) * s);
+    return {x:x0, y:y0, w:Math.max(1, x1 - x0), h:Math.max(1, y1 - y0)};
+  }
+  function roundPath(g, x, y, w, h, r){
+    r = Math.max(0, Math.min(r, w / 2, h / 2));
+    g.beginPath();
+    if (r < 0.01){ g.rect(x, y, w, h); return; }
+    if (g.roundRect){ g.roundRect(x, y, w, h, r); return; }
+    g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r);
+    g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
+  }
+  // Recorte tipo "cover"; fx/fy (0 a 1) indican qué parte de la foto queda a la vista.
+  function cropRect(p, cw, ch, sw, sh){
+    const ca = cw / ch, ia = sw / sh;
+    if (ia > ca){ const w = sh * ca; return {sx:(sw - w) * p.fx, sy:0, sw:w, sh}; }
+    const h = sw / ca; return {sx:0, sy:(sh - h) * p.fy, sw, sh:h};
+  }
+  function paintCell(g, src, sW, sH, p, x, y, w, h, r, hq){
+    const c = cropRect(p, w, h, sW, sH);
+    let img = src, sx = c.sx, sy = c.sy, sw = c.sw, sh = c.sh;
+    if (hq){ const d = downscale(src, sx, sy, sw, sh, w, h); img = d.img; sx = d.sx; sy = d.sy; sw = d.sw; sh = d.sh; }
+    g.save(); roundPath(g, x, y, w, h, r); g.clip();
+    g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+    g.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+    g.restore();
+  }
+  function paintTitles(g, L, s, ox, oy){
+    if (!state.titles) return;
+    const base = TITLE.font * s;
+    g.save(); g.textBaseline = 'middle';
+    for (const hd of L.heads){
+      const cy = oy + (hd.y + TITLE.band / 2) * s, xr = ox + L.w * s;
+      g.fillStyle = state.accent;
+      roundPath(g, ox, cy - TITLE.barH * s / 2, TITLE.barW * s, TITLE.barH * s, 0.25 * s); g.fill();
+      const text = (state.rowTitles[hd.ri] || '').trim(), tx = ox + TITLE.textX * s;
+      let end = tx;
+      if (text){
+        let fp = base; g.font = `600 ${fp}px ${FONT_STACK}`;
+        let tw = g.measureText(text).width;
+        const maxW = xr - tx;
+        if (tw > maxW){ fp = fp * maxW / tw; g.font = `600 ${fp}px ${FONT_STACK}`; tw = g.measureText(text).width; }
+        g.fillStyle = INK; g.fillText(text, tx, cy);
+        end = tx + tw + TITLE.ruleGap * s;
+      }
+      if (xr - end > 2){ g.fillStyle = RULE; g.fillRect(end, cy - TITLE.rule * s / 2, xr - end, Math.max(1, TITLE.rule * s)); }
+    }
+    g.restore();
+  }
+
+  function render(){ if (!raf) raf = requestAnimationFrame(() => { raf = 0; draw(); }); }
+  function draw(){
+    const has = state.photos.length > 0;
+    el.empty.hidden = has; el.sheet.hidden = !has;
+    updateButtons();
+    if (!has){ rects = []; hideTools(); if (!busy) setStatus(''); return; }
+    const L = computeLayout(), pb = L.pb;
+    const availW = Math.max(200, el.desk.clientWidth - 40);
+    const availH = Math.max(560, window.innerHeight - 140);
+    const k = Math.min(availW / pb.W, availH / pb.H);
+    const cssW = Math.round(pb.W * k), cssH = Math.round(pb.H * k);
+    const dpr = Math.min(window.devicePixelRatio || 1, 3), s = k * dpr;
+    el.sheet.style.width = cssW + 'px'; el.sheet.style.height = cssH + 'px';
+    const cw = Math.round(cssW * dpr), ch = Math.round(cssH * dpr);
+    if (el.cv.width !== cw || el.cv.height !== ch){ el.cv.width = cw; el.cv.height = ch; }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cw, ch);
+    ctx.save(); ctx.strokeStyle = '#d1d7e0'; ctx.lineWidth = Math.max(1, Math.round(dpr)); ctx.setLineDash([4 * dpr, 4 * dpr]);
+    ctx.strokeRect(Math.round(pb.m.l * s) + .5, Math.round(pb.m.t * s) + .5, Math.round(pb.cw * s), Math.round(pb.ch * s));
+    ctx.restore();
+
+    const ox = L.ox * s, oy = L.oy * s, R = state.radius * s;
+    paintTitles(ctx, L, s, ox, oy);
+    rects = [];
+    const lifted = drag && drag.moved && drag.mode === 'swap' ? drag.hit.cell.p : null;
+    for (const c of L.cells){
+      const r = snap(c, s, ox, oy);
+      ctx.globalAlpha = c.p === lifted ? 0.3 : 1;
+      paintCell(ctx, c.p.thumb, c.p.thumb.width, c.p.thumb.height, c.p, r.x, r.y, r.w, r.h, R, false);
+      ctx.globalAlpha = 1;
+      rects.push({cell:c, x:r.x / dpr, y:r.y / dpr, w:r.w / dpr, h:r.h / dpr});
+    }
+    const outline = (r, lw) => {
+      ctx.save(); ctx.strokeStyle = '#2563eb'; ctx.lineWidth = lw * dpr;
+      roundPath(ctx, r.x * dpr + lw * dpr / 2, r.y * dpr + lw * dpr / 2, r.w * dpr - lw * dpr, r.h * dpr - lw * dpr, Math.max(0, R - lw * dpr / 2));
+      ctx.stroke(); ctx.restore();
+    };
+    if (lifted){
+      const t = drag.target && drag.target.cell.p !== lifted ? rects.find(x => x.cell.p === drag.target.cell.p) : null;
+      if (t) outline(t, 3);
+      const gw = drag.hit.w * .6, gh = drag.hit.h * .6, gx = (drag.pt.x - gw / 2) * dpr, gy = (drag.pt.y - gh / 2) * dpr;
+      ctx.globalAlpha = .9;
+      paintCell(ctx, lifted.thumb, lifted.thumb.width, lifted.thumb.height, lifted, gx, gy, gw * dpr, gh * dpr, R * .6, false);
+      ctx.globalAlpha = 1;
+      outline({x:gx / dpr, y:gy / dpr, w:gw, h:gh}, 2);
+    } else if (state.mode === 'pan' && hoverP){
+      const h = rects.find(x => x.cell.p === hoverP);
+      if (h && isCropped(h)) outline(h, 2);
+    }
+    if (!busy){
+      const n = state.photos.length, rows = L.rows;
+      setStatus(`<b>${n} ${n === 1 ? 'foto' : 'fotos'}</b> · ${rows} ${rows === 1 ? 'fila' : 'filas'} · ${fmtCm(L.w)} × ${fmtCm(L.h)} cm · ` +
+        (L.scaled ? `se redujo al ${Math.round(L.ratio * 100)} % para que quepa en una hoja` : 'cabe en una hoja'));
+    }
+    if (toolsFor) placeTools();
+  }
+
+  // ---------- Interacción sobre la vista previa ----------
+  const local = e => { const b = el.cv.getBoundingClientRect(); return {x:e.clientX - b.left, y:e.clientY - b.top}; };
+  function hitTest(pt){ for (const r of rects) if (pt.x >= r.x && pt.x <= r.x + r.w && pt.y >= r.y && pt.y <= r.y + r.h) return r; return null; }
+  function isCropped(r){ const c = r.cell, p = c.p; return Math.abs(p.w / p.h - c.w / c.h) > 0.01; }
+  function cursorFor(h){
+    if (drag && drag.moved) return drag.mode === 'pan' ? 'move' : 'grabbing';
+    if (!h) return 'default';
+    if (state.mode === 'pan') return isCropped(h) ? 'move' : 'not-allowed';
+    return 'grab';
+  }
+
+  el.cv.addEventListener('pointerdown', e => {
+    if (busy || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    const pt = local(e), hit = hitTest(pt);
+    if (!hit){ hideTools(); return; }
+    e.preventDefault();
+    try { el.cv.setPointerCapture(e.pointerId); } catch (err) {}
+    drag = {mode:state.mode, hit, start:pt, pt, moved:false, target:null, fx0:hit.cell.p.fx, fy0:hit.cell.p.fy};
+  });
+  el.cv.addEventListener('pointermove', e => {
+    const pt = local(e);
+    if (!drag){
+      const h = hitTest(pt), p = h ? h.cell.p : null;
+      el.cv.style.cursor = cursorFor(h);
+      if (p !== hoverP){
+        hoverP = p;
+        if (e.pointerType === 'mouse'){ if (p) showToolsFor(p); else hideTools(); }
+        if (state.mode === 'pan') render();
+      }
+      return;
+    }
+    const dx = pt.x - drag.start.x, dy = pt.y - drag.start.y;
+    if (!drag.moved){
+      if (Math.hypot(dx, dy) < 4) return;
+      drag.moved = true; pushHistory(); hideTools();
+      el.cv.style.cursor = cursorFor(drag.hit);
+    }
+    drag.pt = pt;
+    if (drag.mode === 'pan'){
+      const c = drag.hit.cell, p = c.p, ca = c.w / c.h, ia = p.w / p.h;
+      if (ia > ca + 1e-6){ const v = ca / ia; p.fx = clamp(drag.fx0 - dx * v / (drag.hit.w * (1 - v)), 0, 1); }
+      else if (ia < ca - 1e-6){ const v = ia / ca; p.fy = clamp(drag.fy0 - dy * v / (drag.hit.h * (1 - v)), 0, 1); }
+    } else {
+      drag.target = hitTest(pt);
+    }
+    render();
+  });
+  function endDrag(cancel){
+    if (!drag) return;
+    const d = drag; drag = null;
+    if (d.moved){
+      const p = d.hit.cell.p;
+      if (d.mode === 'swap'){
+        const t = !cancel && d.target;
+        if (t && t.cell.p !== p){
+          const a = state.photos.indexOf(p), b = state.photos.indexOf(t.cell.p);
+          state.photos[a] = t.cell.p; state.photos[b] = p;
+        } else history.pop();
+      } else if (p.fx === d.fx0 && p.fy === d.fy0) history.pop();
+      updateButtons();
+    } else if (!cancel){
+      showToolsFor(d.hit.cell.p);
+    }
+    el.cv.style.cursor = 'default';
+    render();
+  }
+  el.cv.addEventListener('pointerup', () => endDrag(false));
+  el.cv.addEventListener('pointercancel', () => endDrag(true));
+  el.sheet.addEventListener('pointerleave', e => {
+    if (drag || e.pointerType !== 'mouse') return;
+    hoverP = null; hideTools(); render();
+  });
+
+  function showToolsFor(p){ toolsFor = p; placeTools(); }
+  function hideTools(){ toolsFor = null; el.tools.hidden = true; }
+  function placeTools(){
+    const r = rects.find(x => x.cell.p === toolsFor);
+    if (!r || (drag && drag.moved)){ el.tools.hidden = true; return; }
+    const ob = el.tools.querySelector('[data-act="orient"]');
+    ob.hidden = state.fit !== 'orient';
+    if (!ob.hidden){
+      const toV = toolsFor.orient === 'H';
+      ob.innerHTML = toV ? ICON_V : ICON_H;
+      ob.title = toV ? 'Pasar a vertical' : 'Pasar a horizontal'; ob.setAttribute('aria-label', ob.title);
+    }
+    el.tools.querySelector('[data-act="center"]').hidden = !isCropped(r) || (toolsFor.fx === .5 && toolsFor.fy === .5);
+    const visible = [...el.tools.children].filter(b => !b.hidden).length;
+    const rowW = visible * 26 + (visible - 1) * 3 + 6;
+    el.tools.classList.toggle('narrow', rowW + 10 > r.w);
+    el.tools.hidden = false;
+    const tw = el.tools.offsetWidth;
+    let left = r.x + r.w - tw - 5;
+    if (tw + 10 > r.w) left = r.x + (r.w - tw) / 2;
+    el.tools.style.left = Math.max(2, left) + 'px';
+    el.tools.style.top = (r.y + 5) + 'px';
+  }
+  el.tools.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b || !toolsFor || busy) return;
+    const p = toolsFor, act = b.dataset.act;
+    pushHistory();
+    if (act === 'rotate'){ p.rot = (p.rot + 90) % 360; applyRotation(p); p.orient = p.w >= p.h ? 'H' : 'V'; p.fx = p.fy = .5; }
+    else if (act === 'orient'){ p.orient = p.orient === 'H' ? 'V' : 'H'; p.fx = p.fy = .5; }
+    else if (act === 'center'){ p.fx = p.fy = .5; }
+    else if (act === 'remove'){ state.photos.splice(state.photos.indexOf(p), 1); hideTools(); hoverP = null; rebuildTitleInputs(); }
+    updateButtons(); render();
+  });
+
+  el.btnArrange.addEventListener('click', () => {
+    if (!state.photos.length || busy) return;
+    pushHistory();
+    const n = state.perRow, out = [];
+    for (let i = 0; i < state.photos.length; i += n){
+      const row = state.photos.slice(i, i + n);
+      const H = row.filter(p => cellAspect(p) > 1.0001), V = row.filter(p => cellAspect(p) <= 1.0001);
+      const res = new Array(row.length); let l = 0, r = row.length - 1;
+      H.forEach((p, j) => { if (j % 2 === 0) res[l++] = p; else res[r--] = p; });
+      let vi = 0; for (let k = l; k <= r; k++) res[k] = V[vi++];
+      out.push(...res);
+    }
+    const same = out.every((p, i) => p === state.photos[i]);
+    state.photos = out;
+    if (same){ history.pop(); flash('Las filas ya estaban ordenadas.'); }
+    hideTools(); updateButtons(); render();
+  });
+
+  // ---------- Descargas ----------
+  async function renderExport(){
+    const L = computeLayout(), s = PX_PER_MM;
+    const W = Math.max(1, Math.round(L.w * s)), H = Math.max(1, Math.round(L.h * s));
+    const c = makeCanvas(W, H), g = c.getContext('2d');
+    g.fillStyle = '#fff'; g.fillRect(0, 0, W, H);
+    paintTitles(g, L, s, 0, 0);
+    for (let i = 0; i < L.cells.length; i++){
+      const cell = L.cells[i], p = cell.p;
+      setStatus(`Preparando foto ${i + 1} de ${L.cells.length}…`);
+      await tick();
+      let src = null;
+      try { src = await decode(p.file); } catch (e) { src = null; }
+      let img = p.thumb, iw = p.thumb.width, ih = p.thumb.height;
+      if (src){ const d = dims(src), R = rotated(src, d.w, d.h, p.rot); img = R.img; iw = R.w; ih = R.h; }
+      const r = snap(cell, s, 0, 0);
+      paintCell(g, img, iw, ih, p, r.x, r.y, r.w, r.h, state.radius * s, true);
+      if (src && src.close) src.close();
+    }
+    return {canvas:c, wMm:W / s, hMm:H / s};
+  }
+  function toBlob(c, type, q){ return new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('No se pudo generar la imagen')), type, q)); }
+  async function jpegBytes(c){
+    const u = new Uint8Array(await (await toBlob(c, 'image/jpeg', 0.92)).arrayBuffer());
+    // Marca la imagen a 300 dpi para que Word la inserte del tamaño correcto.
+    if (u[0] === 0xFF && u[1] === 0xD8 && u[2] === 0xFF && u[3] === 0xE0 && u[6] === 0x4A && u[7] === 0x46 && u[8] === 0x49 && u[9] === 0x46 && u[10] === 0){
+      u[13] = 1; u[14] = DPI >> 8; u[15] = DPI & 255; u[16] = DPI >> 8; u[17] = DPI & 255;
+    }
+    return u;
+  }
+  function baseName(){
+    return (el.fileName.value || '').replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Collage';
+  }
+  function save(blob, name){
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  }
+
+  const CRC_TABLE = (() => {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++){ let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; }
+    return t;
+  })();
+  function crc32(u){ let c = 0xFFFFFFFF; for (let i = 0; i < u.length; i++) c = CRC_TABLE[(c ^ u[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+  // ZIP sin compresión: basta para un .docx (la foto ya viene comprimida en JPG).
+  function zip(files, type){
+    const enc = new TextEncoder(), parts = [], central = [], d = new Date();
+    const time = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+    const date = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+    let off = 0;
+    for (const f of files){
+      const name = enc.encode(f.name), crc = crc32(f.data), size = f.data.length;
+      const lh = new DataView(new ArrayBuffer(30));
+      lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0, true); lh.setUint16(8, 0, true);
+      lh.setUint16(10, time, true); lh.setUint16(12, date, true); lh.setUint32(14, crc, true);
+      lh.setUint32(18, size, true); lh.setUint32(22, size, true); lh.setUint16(26, name.length, true); lh.setUint16(28, 0, true);
+      parts.push(new Uint8Array(lh.buffer), name, f.data);
+      const ch = new DataView(new ArrayBuffer(46));
+      ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0, true); ch.setUint16(10, 0, true);
+      ch.setUint16(12, time, true); ch.setUint16(14, date, true); ch.setUint32(16, crc, true);
+      ch.setUint32(20, size, true); ch.setUint32(24, size, true); ch.setUint16(28, name.length, true);
+      ch.setUint16(30, 0, true); ch.setUint16(32, 0, true); ch.setUint16(34, 0, true); ch.setUint16(36, 0, true);
+      ch.setUint32(38, 0, true); ch.setUint32(42, off, true);
+      central.push(new Uint8Array(ch.buffer), name);
+      off += 30 + name.length + size;
+    }
+    const cdSize = central.reduce((a, b) => a + b.length, 0), end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true); end.setUint16(4, 0, true); end.setUint16(6, 0, true);
+    end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
+    end.setUint32(12, cdSize, true); end.setUint32(16, off, true); end.setUint16(20, 0, true);
+    return new Blob([...parts, ...central, new Uint8Array(end.buffer)], {type});
+  }
+  function buildDocx(jpg, wMm, hMm){
+    const pb = pageBox(), tw = mm => Math.round(mm / 25.4 * 1440), emu = mm => Math.round(mm * 36000);
+    const cx = emu(wMm), cy = emu(hMm), X = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+    const ns = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"';
+    const doc = X + `<w:document ${ns}><w:body><w:p><w:pPr><w:spacing w:before="0" w:after="0"/><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:noProof/></w:rPr><w:drawing>` +
+      `<wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="1" name="Collage" descr="Collage de fotos"/>` +
+      `<wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">` +
+      `<pic:pic><pic:nvPicPr><pic:cNvPr id="0" name="collage.jpg"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rIdImg1"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>` +
+      `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>` +
+      `<w:sectPr><w:pgSz w:w="${tw(pb.W)}" w:h="${tw(pb.H)}"${state.landscape ? ' w:orient="landscape"' : ''}/>` +
+      `<w:pgMar w:top="${tw(pb.m.t)}" w:right="${tw(pb.m.r)}" w:bottom="${tw(pb.m.b)}" w:left="${tw(pb.m.l)}" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr></w:body></w:document>`;
+    const rels = X + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdImg1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image1.jpeg"/></Relationships>';
+    const root = X + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>';
+    const types = X + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="jpeg" ContentType="image/jpeg"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>';
+    const enc = new TextEncoder();
+    return zip([
+      {name:'[Content_Types].xml', data:enc.encode(types)},
+      {name:'_rels/.rels', data:enc.encode(root)},
+      {name:'word/document.xml', data:enc.encode(doc)},
+      {name:'word/_rels/document.xml.rels', data:enc.encode(rels)},
+      {name:'word/media/image1.jpeg', data:jpg}
+    ], 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  }
+
+  async function withBusy(fn){
+    if (busy || !state.photos.length) return;
+    busy = true; hideTools(); updateButtons();
+    try { await fn(); }
+    catch (e){ console.error(e); flash('No se pudo generar el archivo. Intenta de nuevo; si sigue fallando, prueba con menos fotos.', true); }
+    finally { busy = false; updateButtons(); render(); }
+  }
+  el.btnWord.addEventListener('click', () => withBusy(async () => {
+    const out = await renderExport();
+    save(buildDocx(await jpegBytes(out.canvas), out.wMm, out.hMm), baseName() + '.docx');
+    flash('Listo, se descargó el Word.');
+  }));
+  el.btnJpg.addEventListener('click', () => withBusy(async () => {
+    const out = await renderExport();
+    save(new Blob([await jpegBytes(out.canvas)], {type:'image/jpeg'}), baseName() + '.jpg');
+    flash('Listo, se descargó la imagen.');
+  }));
+  el.btnCopy.addEventListener('click', () => {
+    if (!navigator.clipboard || !window.ClipboardItem){ flash('Este navegador no permite copiar imágenes. Usa «Imagen JPG».', true); return; }
+    withBusy(async () => {
+      const png = renderExport().then(o => toBlob(o.canvas, 'image/png'));
+      await navigator.clipboard.write([new ClipboardItem({'image/png': png})]);
+      flash(`Imagen copiada. Pégala en Word con ${isMac ? '⌘V' : 'Ctrl+V'}.`);
+    });
+  });
+
+  // ---------- Cargar fotos: botón, arrastrar o pegar ----------
+  el.btnAdd.addEventListener('click', () => el.file.click());
+  el.empty.addEventListener('click', () => el.file.click());
+  el.empty.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); el.file.click(); } });
+  el.file.addEventListener('change', () => { const f = [...(el.file.files || [])]; el.file.value = ''; if (f.length) addFiles(f); });
+  let dragDepth = 0;
+  const hasFiles = e => !!e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+  window.addEventListener('dragenter', e => { if (!hasFiles(e)) return; dragDepth++; el.desk.classList.add('over'); });
+  window.addEventListener('dragleave', e => { if (!hasFiles(e)) return; dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) el.desk.classList.remove('over'); });
+  window.addEventListener('dragover', e => { if (hasFiles(e)){ e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } });
+  window.addEventListener('drop', e => {
+    if (!hasFiles(e)) return;
+    e.preventDefault(); dragDepth = 0; el.desk.classList.remove('over');
+    addFiles(e.dataTransfer.files);
+  });
+  document.addEventListener('paste', e => {
+    const t = e.target;
+    if (t && t.tagName === 'INPUT' && t.type === 'text') return;
+    const files = [...((e.clipboardData && e.clipboardData.files) || [])].filter(f => /^image\//.test(f.type));
+    if (files.length){ e.preventDefault(); addFiles(files); }
+  });
+  document.addEventListener('keydown', e => {
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' && t.type === 'text' || t.tagName === 'TEXTAREA')) return;
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z'){ e.preventDefault(); undo(); }
+    if (e.key === 'Escape') hideTools();
+  });
+
+  el.btnUndo.addEventListener('click', undo);
+  el.btnClear.addEventListener('click', () => {
+    if (!state.photos.length || busy) return;
+    pushHistory(); state.photos = []; hideTools(); hoverP = null; rebuildTitleInputs(); render();
+    flash(`Se quitaron las fotos. Si fue un error, usa Deshacer (${isMac ? '⌘Z' : 'Ctrl+Z'}).`);
+  });
+  el.btnReset.addEventListener('click', () => { Object.assign(state, DEFAULTS); changed(); flash('Ajustes restablecidos.'); });
+  window.addEventListener('resize', render);
+
+  if (location.hash === '#prueba'){
+    window.__collage = {
+      rects: () => rects.map(r => ({x:r.x, y:r.y, w:r.w, h:r.h, name:r.cell.p.name, orient:r.cell.p.orient, fx:r.cell.p.fx, fy:r.cell.p.fy})),
+      order: () => state.photos.map(p => p.name)
+    };
+  }
+
+  loadSettings(); syncControls(); rebuildTitleInputs(); render();
+})();
+</script>
+</body>
+</html>
