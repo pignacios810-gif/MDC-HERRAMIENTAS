@@ -223,7 +223,6 @@ details>summary{cursor:pointer;font-weight:600;font-size:.88rem;color:var(--acce
         <button class="tab tab-adv" role="tab" aria-selected="false" data-ta="anMensual" id="ta-mn" hidden>📆 Mensual</button>
         <button class="tab tab-adv" role="tab" aria-selected="false" data-ta="anSemanal" id="ta-sm" hidden>🗓️ Semanal</button>
         <button class="tab tab-adv" role="tab" aria-selected="false" data-ta="anCapacidad" id="ta-ca" hidden>💰 Capacidad</button>
-        <button class="tab tab-adv" role="tab" aria-selected="false" data-ta="anCruces" id="ta-cr" hidden>🔁 Cruces entre bancos</button>
         <button class="tab" role="tab" aria-selected="false" data-ta="anValida" id="ta-vl">📊 Validación</button>
         <button class="tab" role="tab" aria-selected="false" data-ta="anVolumen" id="ta-vo">📈 Volumen</button>
         <button class="tab" role="tab" aria-selected="false" data-ta="anTraspasos" id="ta-tp">🔀 Traspasos</button>
@@ -258,12 +257,6 @@ details>summary{cursor:pointer;font-weight:600;font-size:.88rem;color:var(--acce
         <div class="card" id="anCapComments" style="padding:16px 18px;gap:10px;background:linear-gradient(135deg,rgba(34,211,238,.08) 0%,rgba(255,59,154,.06) 100%);border:1px solid var(--accent);box-shadow:0 0 0 1px rgba(34,211,238,.15),var(--shadow);margin-top:12px"></div>
         <p class="note" style="margin-top:10px"><b>Ingreso estable</b> = suma de categorías recurrentes (nómina, renta, cobros periódicos a clientes) que aparecen en ≥ 50% de los meses y con coeficiente de variación &lt; 50%. <b>Transferencias propias</b> y <b>depósitos en efectivo</b> no se cuentan como ingreso estable por buena práctica de crédito. El <b>mes mínimo</b> es el peor mes observado — es el que un comité suele usar como stress-test. <b>DSCR</b> = ingreso estable / cuota propuesta; ≥ 1.25 es la referencia habitual para SMEs.</p>
       </div>
-      <!-- Vista Cruces entre bancos (self-transfers) -->
-      <div id="anCrucesView" hidden>
-        <div class="kpis" id="anCrucesKpis" style="margin-bottom:12px"></div>
-        <div class="tw"><table id="anCrucesTbl"></table></div>
-        <p class="note" style="margin-top:10px">Depósitos cuyo <b>origen es la propia cartera del titular</b> (CLABE/cuenta del cliente registrada en otro de los estados subidos, o nombre del titular en la descripción). <b>No son ingreso real</b>: son dinero que el cliente movió entre sus propias cuentas. Si el expediente trae varios bancos, aquí vas a ver los espejos que de otro modo se cuentan dos veces. El "Ingreso real externo" en los KPIs es el abono bruto menos estos cruces.</p>
-      </div>
       <!-- Vista Validación: indicadores con pesos para evaluación crediticia -->
       <div id="anValidaView" hidden>
         <div id="anValidaBlocks" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(420px,100%),1fr));gap:16px"></div>
@@ -275,6 +268,8 @@ details>summary{cursor:pointer;font-weight:600;font-size:.88rem;color:var(--acce
       </div>
       <!-- Vista Traspasos: detecta transferencias entre cuentas cargadas y muestra contrapartes externas -->
       <div id="anTraspasosView" hidden>
+        <!-- Resumen de una sola vista: el panel que la mayoría usa para su dictamen -->
+        <div id="anTpResumen" class="card" style="padding:16px 18px;gap:10px;background:linear-gradient(135deg,rgba(34,211,238,.08) 0%,rgba(255,59,154,.06) 100%);border:1px solid var(--accent);margin-bottom:14px"></div>
         <div class="kpis" id="anTpKpis" style="margin-bottom:12px"></div>
         <h3 style="margin:8px 0 6px;font-size:.98rem;color:var(--ink)">Traspasos propios identificados</h3>
         <div class="tw"><table id="anTpPropiosTbl"></table></div>
@@ -3459,7 +3454,7 @@ document.getElementById('advLockBtn').onclick=async(ev)=>{
     try{sessionStorage.removeItem(ADV_UNLOCK_KEY)}catch(e){}
     showAdvTabs(false);
     // Si la pestaña activa es una avanzada, volver a Anual
-    if(['anMensual','anSemanal','anCapacidad','anCruces','anValida','anVolumen'].includes(AN_MODE)){
+    if(['anMensual','anSemanal','anCapacidad','anValida','anVolumen'].includes(AN_MODE)){
       AN_MODE='anAnual';
       document.querySelectorAll('.tab[data-ta]').forEach(x=>x.setAttribute('aria-selected',x.id==='ta-an'));
       renderAna();
@@ -3766,7 +3761,6 @@ function renderAna(){
   const viewPeriod=AN_MODE==='anAnual'||AN_MODE==='anMensual'||AN_MODE==='anSemanal';
   $('anChartView').hidden=!viewPeriod;
   $('anCapacidadView').hidden=AN_MODE!=='anCapacidad';
-  $('anCrucesView').hidden=AN_MODE!=='anCruces';
   $('anValidaView').hidden=AN_MODE!=='anValida';
   $('anVolumenView').hidden=AN_MODE!=='anVolumen';
   $('anTraspasosView').hidden=AN_MODE!=='anTraspasos';
@@ -3776,8 +3770,6 @@ function renderAna(){
       $('anChart').innerHTML='';$('anTotal').textContent='';$('anProm').textContent='';$('anComments').innerHTML='';
     } else if(AN_MODE==='anCapacidad'){
       $('anCapKpis').innerHTML='';$('anCapTbl').innerHTML='<thead><tr><th>Categoría</th></tr></thead><tbody><tr><td class="status">Sin datos para analizar.</td></tr></tbody>';$('anCapComments').innerHTML='';$('anDscrOut').innerHTML='';
-    } else if(AN_MODE==='anCruces'){
-      $('anCrucesKpis').innerHTML='';$('anCrucesTbl').innerHTML='<thead><tr><th>Cruces</th></tr></thead><tbody><tr><td class="status">Sin datos para analizar.</td></tr></tbody>';
     } else if(AN_MODE==='anValida'){
       $('anValidaBlocks').innerHTML='<div class="card" style="padding:16px"><p class="status">Carga estados de cuenta para calcular los indicadores de validación.</p></div>';
     } else if(AN_MODE==='anVolumen'){
@@ -3812,8 +3804,6 @@ function renderAna(){
     $('anComments').innerHTML=anaComments(bk,data.rows,g,data.colName);
   } else if(AN_MODE==='anCapacidad'){
     renderCapacidad(data.rows,data.si);
-  } else if(AN_MODE==='anCruces'){
-    renderCruces(data.rows,data.si);
   } else if(AN_MODE==='anValida'){
     renderValida(data.rows,data.si);
   } else if(AN_MODE==='anVolumen'){
@@ -3956,6 +3946,7 @@ function renderTraspasos(){
   const selves=tpCollectSelves();
   const moves=tpCollectMoves();
   if(!moves.length){
+    $('anTpResumen').innerHTML='<p class="status" style="margin:0">Carga uno o más estados de cuenta para ver el resumen de traspasos.</p>';
     $('anTpKpis').innerHTML='';
     $('anTpPropiosTbl').innerHTML='<thead><tr><th>Traspasos</th></tr></thead><tbody><tr><td class="status" style="padding:16px">Carga uno o más estados de cuenta para buscar traspasos y contrapartes.</td></tr></tbody>';
     $('anTpExtTbl').innerHTML='<thead><tr><th>Contrapartes</th></tr></thead><tbody><tr><td class="status" style="padding:16px">Sin datos.</td></tr></tbody>';
@@ -3981,9 +3972,31 @@ function renderTraspasos(){
   const retPropios=propios.filter(p=>p.ret>0).reduce((s,p)=>s+p.ret,0);
   const depNeto=depBruto-depPropios;
   const pct=depBruto>0?(depPropios/depBruto*100):0;
+  // Resumen "en 30 segundos" — tabla muy sencilla pensada para pegar en un dictamen.
+  // Cuenta cuántos pares únicos de cuentas propias se vieron (origen → destino).
+  const paresPropios=new Set();
+  propios.forEach(p=>{const my=`${p.bank} ${p.num||p.clabe||''}`;const other=`${p.match.self.bank} ${p.match.self.num||p.match.self.clabe||''}`;paresPropios.add(p.dep>0?`${other} → ${my}`:`${my} → ${other}`)});
+  const nArchivos=FILES.filter(f=>!f.error).length;
+  const nDepPropios=propios.filter(p=>p.dep>0).length;
+  const nRetPropios=propios.filter(p=>p.ret>0).length;
+  const extConRet=new Set(externos.filter(e=>e.ret>0).map(e=>(e.cp.clabes[0]||e.cp.names[0]||e.cp.cuentas[0]||'(sin)')));
+  const extConDep=new Set(externos.filter(e=>e.dep>0).map(e=>(e.cp.clabes[0]||e.cp.names[0]||e.cp.cuentas[0]||'(sin)')));
+  $('anTpResumen').innerHTML=
+    `<div class="row" style="gap:8px;align-items:baseline"><span style="font-size:1.1rem">📋</span><b style="font-size:1rem">Resumen</b></div>`+
+    `<p style="margin:0;font-size:.92rem;line-height:1.55">En los ${nArchivos} estado(s) cargado(s), el cliente recibió <b>${fmt(depBruto)}</b> en depósitos. De ese total, <b style="color:var(--magenta)">${fmt(depPropios)} (${pct.toFixed(1)}%)</b> son traspasos entre sus propias cuentas (no son ingreso real). <b>Ingreso neto externo: ${fmt(depNeto)}</b>. También envió <b>${fmt(retPropios)}</b> a sus propias cuentas.</p>`+
+    `<div class="tw" style="margin-top:4px"><table style="font-size:.88rem">`+
+    `<thead><tr><th>Concepto</th><th class="n">Monto</th><th class="n">Operaciones</th></tr></thead><tbody>`+
+    `<tr><td>Depósitos brutos</td><td class="n">${fmt(depBruto)}</td><td class="n">${moves.filter(m=>m.dep>0).length}</td></tr>`+
+    `<tr><td>  − Traspasos propios (ingresos)</td><td class="n" style="color:var(--magenta)">${fmt(depPropios)}</td><td class="n">${nDepPropios}</td></tr>`+
+    `<tr style="background:var(--accent-soft);font-weight:700"><td>= Ingreso neto externo</td><td class="n" style="color:var(--accent)">${fmt(depNeto)}</td><td class="n">${moves.filter(m=>m.dep>0).length-nDepPropios}</td></tr>`+
+    `<tr><td style="padding-top:12px">Traspasos propios (salidas a otra cuenta mía)</td><td class="n" style="padding-top:12px">${fmt(retPropios)}</td><td class="n" style="padding-top:12px">${nRetPropios}</td></tr>`+
+    `<tr><td>Contrapartes distintas que recibieron dinero</td><td class="n">—</td><td class="n">${extConRet.size}</td></tr>`+
+    `<tr><td>Contrapartes distintas que enviaron dinero</td><td class="n">—</td><td class="n">${extConDep.size}</td></tr>`+
+    `</tbody></table></div>`+
+    (paresPropios.size?`<p style="margin:4px 0 0;font-size:.82rem;color:var(--muted)">Pares de cuentas propias detectadas: ${[...paresPropios].slice(0,5).map(p=>`<code>${esc(p)}</code>`).join(' · ')}${paresPropios.size>5?` y ${paresPropios.size-5} más`:''}.</p>`:'');
   // KPIs
   $('anTpKpis').innerHTML=
-    `<div class="kpi"><span>Archivos cargados</span><b>${FILES.filter(f=>!f.error).length}</b></div>`+
+    `<div class="kpi"><span>Archivos cargados</span><b>${nArchivos}</b></div>`+
     `<div class="kpi"><span>Depósitos brutos</span><b>${fmt(depBruto)}</b></div>`+
     `<div class="kpi"><span>Traspasos propios (ingresos)</span><b>${fmt(depPropios)} <span style="font-size:.78rem;color:var(--muted);text-shadow:none">(${pct.toFixed(1)}%)</span></b></div>`+
     `<div class="kpi"><span>Ingreso neto externo</span><b>${fmt(depNeto)}</b></div>`+
@@ -4184,28 +4197,6 @@ function renderDscr(){
     (dscrMin<1.25?`<p class="status" style="font-size:.78rem;margin-top:8px;line-height:1.45">Con el peor mes observado el ingreso estable no alcanza la referencia habitual (1.25x). Considera reducir la cuota, extender plazo o pedir un obligado solidario.</p>`:'');
 }
 
-/* ====================== Cruces entre bancos (traspasos del propio titular) ====================== */
-function renderCruces(rows,si){
-  const cruces=rows.filter(r=>r.self);
-  const totGross=rows.reduce((s,r)=>s+r.amt,0);
-  const totSelf=cruces.reduce((s,r)=>s+r.amt,0);
-  const external=totGross-totSelf;
-  $('anCrucesKpis').innerHTML=
-    `<div class="kpi"><span>Cruces detectados</span><b style="color:var(--magenta)">${cruces.length.toLocaleString('es-MX')}</b></div>`+
-    `<div class="kpi"><span>Monto cruzado (no es ingreso)</span><b>${fmt(totSelf)}</b></div>`+
-    `<div class="kpi"><span>% del bruto</span><b>${totGross?((totSelf/totGross)*100).toFixed(1):'0.0'}%</b></div>`+
-    `<div class="kpi"><span>Ingreso real externo</span><b style="color:var(--accent)">${fmt(external)}</b></div>`;
-  if(!cruces.length){
-    const hint=si&&si.selfKeys.size?`Se buscaron las cuentas/CLABEs propias: ${[...si.selfKeys].slice(0,3).map(x=>x.length>8?x.slice(0,4)+'…'+x.slice(-4):x).join(', ')}${si.selfKeys.size>3?' y '+(si.selfKeys.size-3)+' más':''}.`:'Sube más de un banco del mismo titular para detectar espejos.';
-    $('anCrucesTbl').innerHTML=`<thead><tr><th>Cruces</th></tr></thead><tbody><tr><td class="status" style="padding:16px">Sin cruces detectados en los movimientos filtrados. ${hint}</td></tr></tbody>`;
-    return;
-  }
-  const sorted=[...cruces].sort((a,b)=>b.amt-a.amt);
-  $('anCrucesTbl').innerHTML='<thead><tr><th>Fecha</th><th class="n">Monto</th><th>Archivo · Pág.</th><th>Razón del cruce</th><th>Descripción</th></tr></thead><tbody>'+
-    sorted.map(r=>`<tr><td class="mono">${r.dt.toISOString().slice(0,10)}</td><td class="n">${fmt(r.amt)}</td><td class="mono">${esc(r.file||'')} · p.${r.page||'—'}</td><td style="min-width:220px;max-width:300px"><b>${esc(r.selfReason||'')}</b></td><td style="white-space:pre-line;min-width:240px;max-width:420px;font-size:.84rem">${esc((r.desc||'').slice(0,260))}</td></tr>`).join('')+'</tbody>';
-  // AutoFilter en Fecha, Monto, Archivo·Pág, Razón del cruce. Excluimos Descripción (texto único)
-  attachTableAutoFilter({tableId:'anCrucesTbl',skipCols:new Set([4])});
-}
 
 /* ====================== Validación: indicadores con pesos para evaluación crediticia ====================== */
 // Persistencia de inputs del usuario (ventas mes a mes, etc.) por sesión
