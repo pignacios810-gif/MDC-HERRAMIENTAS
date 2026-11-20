@@ -226,6 +226,7 @@ details>summary{cursor:pointer;font-weight:600;font-size:.88rem;color:var(--acce
         <button class="tab tab-adv" role="tab" aria-selected="false" data-ta="anCruces" id="ta-cr" hidden>🔁 Cruces entre bancos</button>
         <button class="tab" role="tab" aria-selected="false" data-ta="anValida" id="ta-vl">📊 Validación</button>
         <button class="tab" role="tab" aria-selected="false" data-ta="anVolumen" id="ta-vo">📈 Volumen</button>
+        <button class="tab" role="tab" aria-selected="false" data-ta="anTraspasos" id="ta-tp">🔀 Traspasos</button>
         <!-- Botón muy sutil para desbloquear vistas avanzadas con clave -->
         <button type="button" id="advLockBtn" title="Vistas avanzadas (requiere clave)" aria-label="Desbloquear vistas avanzadas con clave" style="margin-left:auto;background:transparent;border:0;color:rgba(255,255,255,.3);font-size:1.1rem;line-height:1;letter-spacing:2px;padding:4px 8px;cursor:pointer;font-family:inherit;transition:color .2s,text-shadow .2s;align-self:center">⋯</button>
       </div>
@@ -271,6 +272,15 @@ details>summary{cursor:pointer;font-weight:600;font-size:.88rem;color:var(--acce
       <!-- Vista Volumen: ticket promedio + frecuencia de operaciones por mes -->
       <div id="anVolumenView" hidden>
         <div id="anVolumenBlocks"></div>
+      </div>
+      <!-- Vista Traspasos: detecta transferencias entre cuentas cargadas y muestra contrapartes externas -->
+      <div id="anTraspasosView" hidden>
+        <div class="kpis" id="anTpKpis" style="margin-bottom:12px"></div>
+        <h3 style="margin:8px 0 6px;font-size:.98rem;color:var(--ink)">Traspasos propios identificados</h3>
+        <div class="tw"><table id="anTpPropiosTbl"></table></div>
+        <h3 style="margin:18px 0 6px;font-size:.98rem;color:var(--ink)">Transferencias con terceros (contrapartes externas)</h3>
+        <div class="tw"><table id="anTpExtTbl"></table></div>
+        <p class="note" style="margin-top:10px">Se detectan <b>traspasos propios</b> cuando la contraparte mencionada en la descripción (CLABE, cuenta, RFC o nombre) coincide con otro de los estados que subiste. La confianza es <b>Alta</b> cuando cuadra CLABE o cuenta, <b>Media</b> cuando cuadra RFC o nombre. Las <b>transferencias con terceros</b> agrupan la contraparte por CLABE o por nombre de beneficiario, y marcan el banco cuando la CLABE lo permite identificar (primeros 3 dígitos). Para análisis de crédito, el <b>ingreso neto externo</b> descuenta los traspasos propios del depósito bruto, porque no son ingreso real.</p>
       </div>
       <p class="note">El análisis usa los movimientos de la pestaña Movimientos tal como están filtrados ahí (filtro de "solo depósitos", búsqueda global y filtros por columna). "Mes a analizar" aplica solo a la vista "Mensual".</p>
     </div>
@@ -3759,6 +3769,7 @@ function renderAna(){
   $('anCrucesView').hidden=AN_MODE!=='anCruces';
   $('anValidaView').hidden=AN_MODE!=='anValida';
   $('anVolumenView').hidden=AN_MODE!=='anVolumen';
+  $('anTraspasosView').hidden=AN_MODE!=='anTraspasos';
   if(!g||!data||!data.rows.length){
     if(viewPeriod){
       $('anTbl').innerHTML='<thead><tr><th>Mes</th><th class="n">#Pagos</th><th class="n">Monto</th></tr></thead><tbody><tr><td colspan="3" class="status">Carga estados de cuenta y asegúrate de tener el filtro de "solo abonos/depósitos" activo para ver el análisis.</td></tr></tbody>';
@@ -3771,6 +3782,9 @@ function renderAna(){
       $('anValidaBlocks').innerHTML='<div class="card" style="padding:16px"><p class="status">Carga estados de cuenta para calcular los indicadores de validación.</p></div>';
     } else if(AN_MODE==='anVolumen'){
       $('anVolumenBlocks').innerHTML='<div class="card" style="padding:16px"><p class="status">Carga estados de cuenta para calcular ticket promedio y frecuencia.</p></div>';
+    } else if(AN_MODE==='anTraspasos'){
+      // Traspasos funciona globalmente (sobre todos los archivos), no depende del filtro actual
+      renderTraspasos();
     }
     return;
   }
@@ -3804,6 +3818,8 @@ function renderAna(){
     renderValida(data.rows,data.si);
   } else if(AN_MODE==='anVolumen'){
     renderVolumen(data.rows,data.si);
+  } else if(AN_MODE==='anTraspasos'){
+    renderTraspasos();
   }
 }
 // Live-update DSCR cuando el usuario teclea la cuota
@@ -3835,6 +3851,177 @@ function collSyncAllBtn(){
   btn.textContent=allColl?'⇅ Expandir todo':'⇅ Minimizar todo';
   btn.title=allColl?'Expandir Paso 1, Paso 2 y Paso 3':'Minimizar Paso 1, Paso 2 y Paso 3';
 }
+/* ====================== Traspasos entre cuentas y contrapartes externas ====================== */
+// Prefijos de 3 dígitos de la CLABE a nombre del banco (los más comunes en México)
+const CLABE_BANK={
+  '002':'Banamex','012':'BBVA','014':'Santander','019':'Banjército','021':'HSBC','030':'Bajío',
+  '032':'IXE','036':'Inbursa','037':'Interacciones','042':'Mifel','044':'Scotiabank','058':'Banregio/Hey',
+  '059':'Invex','060':'Bansi','062':'Afirme','072':'Banorte','103':'American Express','106':'BofA',
+  '108':'MUFG','110':'JP Morgan','112':'Monex','113':'Ve por Más','116':'ING','127':'Azteca',
+  '128':'Autofin','130':'Compartamos','132':'Multiva','133':'Actinver','135':'Nafin','136':'Intercam',
+  '137':'Bancoppel','140':'Consubanco','141':'Volkswagen','143':'CIBanco','145':'Bbase','147':'Bankaool',
+  '148':'PagaTodo','150':'Banco Inmobiliario','156':'Sabadell','166':'Banco Base','659':'ASP Integra',
+  '706':'Arcus','710':'NVIO','722':'Mercado Pago','740':'Ualá','846':'STP'
+};
+const bankFromClabe=c=>CLABE_BANK[String(c||'').slice(0,3)]||'';
+// Normaliza nombre: uppercase, sin acentos, un espacio, sin puntuación básica.
+const normName=s=>String(s||'').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
+// Extrae CLABEs (18 dígitos), cuentas (10-14 dígitos), RFCs y posibles nombres de beneficiario del texto.
+function cpartyParse(desc,ref){
+  const t=String(desc||'')+' '+String(ref||'');
+  const clabes=[...new Set(t.match(/\b\d{18}\b/g)||[])];
+  // Cuentas: 10-14 dígitos que NO son parte de una CLABE (ya capturados aparte)
+  let tResto=t;clabes.forEach(c=>{tResto=tResto.replace(new RegExp(c,'g'),'')});
+  const cuentas=[...new Set(tResto.match(/\b\d{10,14}\b/g)||[])];
+  const rfcs=[...new Set(t.match(/\b([A-Z&Ñ]{3,4}\d{6}[A-Z0-9]{3})\b/g)||[])];
+  // Nombre del beneficiario: patrones comunes en los lectores
+  //   Santander / HSBC: "DEL CLIENTE XXX" / "AL CLIENTE XXX"
+  //   Banorte: "DEL CLIENTE XXX DE LA CLABE..."
+  //   BBVA:    "ENVIADO A CITI MEXICO / DEL CLIENTE XXX"
+  //   Mercado Pago: "GRUPO BEARDMAN SA DE CV DATO NO VERIFICADO..."
+  const names=new Set();
+  const nRE=/(?:DEL\s+CLIENTE|AL\s+CLIENTE|ENVIADO\s+A|RECIBIDO\s+DE|BENEFICIARIO[:\s]+|ORDENANTE[:\s]+|A\s+NOMBRE\s+DE)\s+([A-ZÁÉÍÓÚÑ&][A-ZÁÉÍÓÚÑ&0-9\s\.\-]{3,80}?)(?=\s+(?:DE LA CUENTA|DE LA CLABE|RFC|CON RFC|CLAVE DE RASTREO|REF|CONCEPTO|BCO|CVE|HR LIQ|\(\d|\s*$)|\n|$)/gi;
+  let m;while((m=nRE.exec(t))){const n=normName(m[1]);if(n.length>=4&&n.length<=80) names.add(n)}
+  // Bancos mencionados por nombre (BBVA, BANORTE, SANTANDER, etc.)
+  const bancos=new Set();
+  const bRE=/\b(BBVA|BANORTE|SANTANDER|HSBC|BANAMEX|CITI|SCOTIABANK|INBURSA|BANREGIO|HEY\s*BANCO|MIFEL|BANBAJIO|AFIRME|MULTIVA|BANCOPPEL|AZTECA|MERCADO\s*PAGO|STP|NU\s*MEXICO|ALBO|UAL[AÁ])\b/gi;
+  while((m=bRE.exec(t))) bancos.add(m[1].toUpperCase().replace(/\s+/g,' '));
+  return {clabes,cuentas,rfcs,names:[...names],bancos:[...bancos]};
+}
+// Reúne la identidad de cada cuenta subida: {file, bank, num, clabe, rfc, titular}
+function tpCollectSelves(){
+  const selves=[];
+  for(const f of FILES){
+    if(f.error||!f.parsed||!f.parsed.accounts) continue;
+    const bankLbl=(BANKS.find(b=>b.id===f.bank)||{}).name||f.bank||'';
+    // Titular: evitamos quedarnos con un número de cliente (puro dígitos). Buscamos el nombre en
+    // el primer texto del PDF (primera cadena en mayúsculas de 2+ palabras, sin dígitos).
+    let tname=f.parsed.cliente||'';
+    if(/^\d+$/.test(tname)) tname='';
+    if(!tname && f.pdf && f.pdf.pages){
+      const t1=f.pdf.pages.slice(0,1).map(p=>p.items.map(i=>i.s).join(' ')).join(' ');
+      const m=t1.match(/\b([A-ZÁÉÍÓÚÑ]{2,}(?:\s+[A-ZÁÉÍÓÚÑ&]{2,}){1,5})\b/);
+      if(m) tname=m[1];
+    }
+    const titular=normName(tname);
+    for(const a of f.parsed.accounts){
+      selves.push({file:f.name,bank:bankLbl,num:String(a.num||''),clabe:String(a.clabe||''),rfc:String(a.rfc||''),titular,acctId:bankLbl+'|'+(a.num||a.clabe||a.name||'')});
+    }
+  }
+  return selves;
+}
+// Recorre todos los movimientos de todos los archivos y devuelve rows planos
+function tpCollectMoves(){
+  const out=[];
+  for(const f of FILES){
+    if(f.error||!f.parsed||!f.parsed.accounts) continue;
+    const bankLbl=(BANKS.find(b=>b.id===f.bank)||{}).name||f.bank||'';
+    for(const a of f.parsed.accounts){
+      for(const r of a.rows){
+        out.push({
+          file:f.name, bank:bankLbl, acctId:bankLbl+'|'+(a.num||a.clabe||a.name||''),
+          num:String(a.num||''), clabe:String(a.clabe||''),
+          dt:r.dt, dtTxt:r.dtTxt||r.fecha||'', dep:+r.dep||0, ret:+r.ret||0,
+          desc:String(r.desc||''), ref:String(r.ref||''), page:r.page
+        });
+      }
+    }
+  }
+  return out;
+}
+// ¿El movimiento corresponde a un propio? Devuelve el self matched y la confianza
+// Un "traspaso propio" puede ser:
+//  (a) hacia otra cuenta subida (otro archivo o misma institución con otra cuenta)
+//  (b) hacia una cuenta del mismo titular que NO subiste pero cuyo RFC/nombre coincide
+//      con el titular de algún archivo subido (típico: "TRASP FONDOS AL R.F.C. XXX")
+function tpMatchSelf(move, selves){
+  const cp=cpartyParse(move.desc,move.ref);
+  // 1) Match por CLABE o Cuenta en otra cuenta subida
+  for(const s of selves){
+    if(s.acctId===move.acctId) continue;
+    if(s.clabe && cp.clabes.includes(s.clabe)) return {self:s,conf:'Alta',by:'CLABE'};
+    if(s.num   && cp.cuentas.includes(s.num)) return {self:s,conf:'Alta',by:'Cuenta'};
+  }
+  // 2) Match por RFC: incluso dentro del mismo archivo (otra cuenta del mismo titular)
+  for(const s of selves){
+    if(s.rfc && cp.rfcs.includes(s.rfc)) return {self:s,conf:s.acctId===move.acctId?'Alta':'Alta',by:'RFC'};
+  }
+  // 3) Match por nombre del titular
+  for(const s of selves){
+    if(s.titular && s.titular.length>=6 && cp.names.some(n=>n===s.titular||(n.length>6&&(n.includes(s.titular)||s.titular.includes(n))))) return {self:s,conf:'Media',by:'Nombre'};
+  }
+  return null;
+}
+function renderTraspasos(){
+  const selves=tpCollectSelves();
+  const moves=tpCollectMoves();
+  if(!moves.length){
+    $('anTpKpis').innerHTML='';
+    $('anTpPropiosTbl').innerHTML='<thead><tr><th>Traspasos</th></tr></thead><tbody><tr><td class="status" style="padding:16px">Carga uno o más estados de cuenta para buscar traspasos y contrapartes.</td></tr></tbody>';
+    $('anTpExtTbl').innerHTML='<thead><tr><th>Contrapartes</th></tr></thead><tbody><tr><td class="status" style="padding:16px">Sin datos.</td></tr></tbody>';
+    return;
+  }
+  // Clasifica cada movimiento
+  const propios=[],externos=[];
+  let depBruto=0;
+  for(const mv of moves){
+    if(mv.dep>0){depBruto+=mv.dep}
+    const match=tpMatchSelf(mv,selves);
+    if(match) propios.push({...mv,match});
+    else{
+      // Externo: solo contar si hay cparty detectada
+      const cp=cpartyParse(mv.desc,mv.ref);
+      if(mv.dep>0||mv.ret>0){
+        externos.push({...mv,cp});
+      }
+    }
+  }
+  // Monto de depósitos propios identificados (no se cuentan como ingreso real)
+  const depPropios=propios.filter(p=>p.dep>0).reduce((s,p)=>s+p.dep,0);
+  const retPropios=propios.filter(p=>p.ret>0).reduce((s,p)=>s+p.ret,0);
+  const depNeto=depBruto-depPropios;
+  const pct=depBruto>0?(depPropios/depBruto*100):0;
+  // KPIs
+  $('anTpKpis').innerHTML=
+    `<div class="kpi"><span>Archivos cargados</span><b>${FILES.filter(f=>!f.error).length}</b></div>`+
+    `<div class="kpi"><span>Depósitos brutos</span><b>${fmt(depBruto)}</b></div>`+
+    `<div class="kpi"><span>Traspasos propios (ingresos)</span><b>${fmt(depPropios)} <span style="font-size:.78rem;color:var(--muted);text-shadow:none">(${pct.toFixed(1)}%)</span></b></div>`+
+    `<div class="kpi"><span>Ingreso neto externo</span><b>${fmt(depNeto)}</b></div>`+
+    `<div class="kpi"><span>Traspasos propios (salidas)</span><b>${fmt(retPropios)}</b></div>`;
+  // Tabla de traspasos propios — ordenados por fecha
+  if(!propios.length){
+    $('anTpPropiosTbl').innerHTML='<thead><tr><th>Traspasos propios</th></tr></thead><tbody><tr><td class="status" style="padding:16px">No se detectaron traspasos entre tus cuentas cargadas. ' +(selves.length<2?'Sube al menos dos estados de cuenta distintos para que pueda comparar.':'')+'</td></tr></tbody>';
+  } else {
+    propios.sort((a,b)=>(a.dt?+a.dt:0)-(b.dt?+b.dt:0));
+    $('anTpPropiosTbl').innerHTML='<thead><tr><th>Fecha</th><th>De (cuenta)</th><th>A (cuenta)</th><th class="n">Depósito</th><th class="n">Retiro</th><th>Confianza</th><th>Match por</th><th>Descripción</th><th>Archivo · Pág.</th></tr></thead><tbody>'+
+      propios.map(p=>{
+        const myLbl=`${p.bank} · ${p.num||p.clabe||''}`;
+        const otherLbl=`${p.match.self.bank} · ${p.match.self.num||p.match.self.clabe||''}`;
+        const deLbl=p.dep>0?otherLbl:myLbl;
+        const aLbl =p.dep>0?myLbl:otherLbl;
+        const sev=p.match.conf==='Alta'?'ok':'warn';
+        return `<tr><td class="mono">${esc(p.dtTxt)}</td><td>${esc(deLbl)}</td><td>${esc(aLbl)}</td><td class="n">${p.dep>0?fmt(p.dep):''}</td><td class="n">${p.ret>0?fmt(p.ret):''}</td><td>${chip(sev,p.match.conf)}</td><td class="mono" style="font-size:.78rem">${esc(p.match.by)}</td><td style="min-width:260px;max-width:480px;white-space:pre-line;font-size:.82rem">${esc((p.desc||'').slice(0,240))}</td><td class="mono" style="font-size:.78rem">${esc(p.file)} · p.${p.page||''}</td></tr>`;
+      }).join('')+'</tbody>';
+    attachTableAutoFilter({tableId:'anTpPropiosTbl',skipCols:new Set([7])});
+  }
+  // Agrupar contrapartes externas: clave = primera CLABE o, si no hay, el primer nombre normalizado
+  const ext={};
+  for(const e of externos){
+    const key=(e.cp.clabes[0]||e.cp.names[0]||e.cp.bancos[0]||e.cp.cuentas[0]||'(no identificada)');
+    const b=ext[key]||(ext[key]={key,clabe:e.cp.clabes[0]||'',cuenta:e.cp.cuentas[0]||'',bank:(e.cp.clabes[0]?bankFromClabe(e.cp.clabes[0]):'')||e.cp.bancos[0]||'',nombre:e.cp.names[0]||'',rfc:e.cp.rfcs[0]||'',envi:0,reci:0,nEnv:0,nRec:0});
+    if(e.dep>0){b.reci+=e.dep;b.nRec++}
+    if(e.ret>0){b.envi+=e.ret;b.nEnv++}
+  }
+  const rows=Object.values(ext).sort((a,b)=>(b.envi+b.reci)-(a.envi+a.reci)).slice(0,100);
+  if(!rows.length){
+    $('anTpExtTbl').innerHTML='<thead><tr><th>Contrapartes</th></tr></thead><tbody><tr><td class="status" style="padding:16px">Sin contrapartes externas identificadas.</td></tr></tbody>';
+  } else {
+    $('anTpExtTbl').innerHTML='<thead><tr><th>#</th><th>Beneficiario / Ordenante</th><th>Banco</th><th>CLABE / Cuenta</th><th>RFC</th><th class="n">#Env</th><th class="n">Enviado</th><th class="n">#Rec</th><th class="n">Recibido</th></tr></thead><tbody>'+
+      rows.map((r,i)=>`<tr><td class="n">${i+1}</td><td>${esc(r.nombre||'(sin nombre)')}</td><td>${esc(r.bank||'')}</td><td class="mono" style="font-size:.78rem">${esc(r.clabe||r.cuenta||'')}</td><td class="mono" style="font-size:.78rem">${esc(r.rfc||'')}</td><td class="n">${r.nEnv||''}</td><td class="n">${r.envi>0?fmt(r.envi):''}</td><td class="n">${r.nRec||''}</td><td class="n">${r.reci>0?fmt(r.reci):''}</td></tr>`).join('')+'</tbody>';
+    attachTableAutoFilter({tableId:'anTpExtTbl',skipCols:new Set([0])});
+  }
+}
+
 function collInit(){
   const st=collGetState();
   document.querySelectorAll('section.collapsible').forEach(sec=>{
