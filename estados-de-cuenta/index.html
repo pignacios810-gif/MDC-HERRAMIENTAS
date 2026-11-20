@@ -4038,16 +4038,26 @@ function renderTraspasos(){
   const ext={};
   for(const e of externos){
     const key=(e.cp.clabes[0]||e.cp.names[0]||e.cp.bancos[0]||e.cp.cuentas[0]||'(no identificada)');
-    const b=ext[key]||(ext[key]={key,clabe:e.cp.clabes[0]||'',cuenta:e.cp.cuentas[0]||'',bank:(e.cp.clabes[0]?bankFromClabe(e.cp.clabes[0]):'')||e.cp.bancos[0]||'',nombre:e.cp.names[0]||'',rfc:e.cp.rfcs[0]||'',envi:0,reci:0,nEnv:0,nRec:0});
+    const b=ext[key]||(ext[key]={key,clabe:e.cp.clabes[0]||'',cuenta:e.cp.cuentas[0]||'',bank:(e.cp.clabes[0]?bankFromClabe(e.cp.clabes[0]):'')||e.cp.bancos[0]||'',nombre:e.cp.names[0]||'',rfc:e.cp.rfcs[0]||'',envi:0,reci:0,nEnv:0,nRec:0,meses:new Set()});
     if(e.dep>0){b.reci+=e.dep;b.nRec++}
     if(e.ret>0){b.envi+=e.ret;b.nEnv++}
+    if(e.dt){const y=e.dt.getUTCFullYear(),m=e.dt.getUTCMonth();b.meses.add(`${y}-${String(m+1).padStart(2,'0')}`)}
   }
   const rows=Object.values(ext).sort((a,b)=>(b.envi+b.reci)-(a.envi+a.reci)).slice(0,100);
+  // Formato de meses compacto: "may-26 · sep-26" o "oct-25 a sep-26" si son 4+ meses consecutivos
+  const MES_ABR=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  const fmtMes=key=>{const [y,m]=key.split('-');return `${MES_ABR[+m-1]}-${y.slice(2)}`};
+  const fmtMeses=set=>{
+    const arr=[...set].sort();
+    if(!arr.length) return '';
+    if(arr.length<=4) return arr.map(fmtMes).join(' · ');
+    return `${arr.length} meses (${fmtMes(arr[0])} a ${fmtMes(arr[arr.length-1])})`;
+  };
   if(!rows.length){
     $('anTpExtTbl').innerHTML='<thead><tr><th>Contrapartes</th></tr></thead><tbody><tr><td class="status" style="padding:16px">Sin contrapartes externas identificadas.</td></tr></tbody>';
   } else {
-    $('anTpExtTbl').innerHTML='<thead><tr><th>#</th><th>Beneficiario / Ordenante</th><th>Banco</th><th>CLABE / Cuenta</th><th>RFC</th><th class="n">#Env</th><th class="n">Enviado</th><th class="n">#Rec</th><th class="n">Recibido</th></tr></thead><tbody>'+
-      rows.map((r,i)=>`<tr><td class="n">${i+1}</td><td>${esc(r.nombre||'(sin nombre)')}</td><td>${esc(r.bank||'')}</td><td class="mono" style="font-size:.78rem">${esc(r.clabe||r.cuenta||'')}</td><td class="mono" style="font-size:.78rem">${esc(r.rfc||'')}</td><td class="n">${r.nEnv||''}</td><td class="n">${r.envi>0?fmt(r.envi):''}</td><td class="n">${r.nRec||''}</td><td class="n">${r.reci>0?fmt(r.reci):''}</td></tr>`).join('')+'</tbody>';
+    $('anTpExtTbl').innerHTML='<thead><tr><th>#</th><th>Beneficiario / Ordenante</th><th>Banco</th><th>CLABE / Cuenta</th><th>RFC</th><th class="n">#Env</th><th class="n">Enviado</th><th class="n">#Rec</th><th class="n">Recibido</th><th>Meses</th></tr></thead><tbody>'+
+      rows.map((r,i)=>`<tr><td class="n">${i+1}</td><td>${esc(r.nombre||'(sin nombre)')}</td><td>${esc(r.bank||'')}</td><td class="mono" style="font-size:.78rem">${esc(r.clabe||r.cuenta||'')}</td><td class="mono" style="font-size:.78rem">${esc(r.rfc||'')}</td><td class="n">${r.nEnv||''}</td><td class="n">${r.envi>0?fmt(r.envi):''}</td><td class="n">${r.nRec||''}</td><td class="n">${r.reci>0?fmt(r.reci):''}</td><td style="font-size:.78rem" title="${esc([...r.meses].sort().map(fmtMes).join(', '))}">${esc(fmtMeses(r.meses))}</td></tr>`).join('')+'</tbody>';
     attachTableAutoFilter({tableId:'anTpExtTbl',skipCols:new Set([0])});
   }
 }
