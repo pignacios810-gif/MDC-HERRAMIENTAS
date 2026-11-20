@@ -222,8 +222,6 @@ details>summary{cursor:pointer;font-weight:600;font-size:.88rem;color:var(--acce
         <button class="tab" role="tab" aria-selected="true" data-ta="anAnual" id="ta-an">📅 Anual</button>
         <button class="tab tab-adv" role="tab" aria-selected="false" data-ta="anMensual" id="ta-mn" hidden>📆 Mensual</button>
         <button class="tab tab-adv" role="tab" aria-selected="false" data-ta="anSemanal" id="ta-sm" hidden>🗓️ Semanal</button>
-        <button class="tab tab-adv" role="tab" aria-selected="false" data-ta="anAlerts" id="ta-al" hidden>🚨 Alertas PLD</button>
-        <button class="tab tab-adv" role="tab" aria-selected="false" data-ta="anCparty" id="ta-cp" hidden>🤝 Contrapartes</button>
         <button class="tab tab-adv" role="tab" aria-selected="false" data-ta="anCapacidad" id="ta-ca" hidden>💰 Capacidad</button>
         <button class="tab tab-adv" role="tab" aria-selected="false" data-ta="anCruces" id="ta-cr" hidden>🔁 Cruces entre bancos</button>
         <button class="tab" role="tab" aria-selected="false" data-ta="anValida" id="ta-vl">📊 Validación</button>
@@ -242,18 +240,6 @@ details>summary{cursor:pointer;font-weight:600;font-size:.88rem;color:var(--acce
         </div>
         <div class="card" style="padding:16px 22px;gap:4px;background:linear-gradient(135deg,var(--surface) 0%,var(--surface-2) 100%);margin-top:12px"><div class="row" style="gap:42px;justify-content:flex-end"><div style="text-align:right"><div class="status" style="font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;font-weight:700;color:var(--muted)">Total de depósitos</div><b id="anTotal" class="mono" style="font-size:1.4rem;color:var(--accent);text-shadow:var(--glow-cyan);display:block;margin-top:3px"></b></div><div style="text-align:right"><div class="status" style="font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;font-weight:700;color:var(--muted)">Promedio</div><b id="anProm" class="mono" style="font-size:1.4rem;color:var(--magenta);text-shadow:var(--glow-mag);display:block;margin-top:3px"></b></div></div></div>
         <div class="card" id="anComments" style="padding:16px 18px;gap:10px;background:linear-gradient(135deg,rgba(34,211,238,.08) 0%,rgba(255,59,154,.06) 100%);border:1px solid var(--accent);box-shadow:0 0 0 1px rgba(34,211,238,.15),var(--shadow);margin-top:12px"></div>
-      </div>
-      <!-- Vista Alertas PLD -->
-      <div id="anAlertsView" hidden>
-        <div class="kpis" id="anAlertKpis" style="margin-bottom:12px"></div>
-        <div class="tw"><table id="anAlertTbl"></table></div>
-        <p class="note" style="margin-top:10px">Alertas automáticas basadas en umbrales mexicanos (LFPIORPI / UIF). <b>Operación en efectivo relevante</b>: ≥ MXN 150,000 (aprox US$ 7,500). <b>Fragmentación</b>: 2+ depósitos en efectivo el mismo día que sumen más del umbral cuando ninguno individual lo alcanza. <b>Montos exactamente redondos</b>: múltiplos de MXN 50,000. <b>Concentración por emisor</b>: una contraparte que aporta ≥ 50% de los abonos del período filtrado. Son indicadores, no un reporte UIF; valídalos manualmente antes de reportar.</p>
-      </div>
-      <!-- Vista Top Contrapartes -->
-      <div id="anCpartyView" hidden>
-        <div class="kpis" id="anCpartyKpis" style="margin-bottom:12px"></div>
-        <div class="tw"><table id="anCpartyTbl"></table></div>
-        <p class="note" style="margin-top:10px">Contrapartes identificadas por su CLABE, RFC o nombre dentro de la descripción del movimiento. La columna <b>CLABE válida</b> comprueba el <b>dígito verificador estándar</b> (una CLABE que no cuadra con su propio dígito es señal fuerte de edición del PDF). Un ranking donde pocas contrapartes concentran el grueso del flujo es útil para KYC y para discutir el expediente con el cliente.</p>
       </div>
       <!-- Vista Capacidad de pago -->
       <div id="anCapacidadView" hidden>
@@ -3463,7 +3449,7 @@ document.getElementById('advLockBtn').onclick=async(ev)=>{
     try{sessionStorage.removeItem(ADV_UNLOCK_KEY)}catch(e){}
     showAdvTabs(false);
     // Si la pestaña activa es una avanzada, volver a Anual
-    if(['anMensual','anSemanal','anAlerts','anCparty','anCapacidad','anCruces','anValida','anVolumen'].includes(AN_MODE)){
+    if(['anMensual','anSemanal','anCapacidad','anCruces','anValida','anVolumen'].includes(AN_MODE)){
       AN_MODE='anAnual';
       document.querySelectorAll('.tab[data-ta]').forEach(x=>x.setAttribute('aria-selected',x.id==='ta-an'));
       renderAna();
@@ -3769,8 +3755,6 @@ function renderAna(){
   // Mostrar/ocultar vistas según sub-pestaña
   const viewPeriod=AN_MODE==='anAnual'||AN_MODE==='anMensual'||AN_MODE==='anSemanal';
   $('anChartView').hidden=!viewPeriod;
-  $('anAlertsView').hidden=AN_MODE!=='anAlerts';
-  $('anCpartyView').hidden=AN_MODE!=='anCparty';
   $('anCapacidadView').hidden=AN_MODE!=='anCapacidad';
   $('anCrucesView').hidden=AN_MODE!=='anCruces';
   $('anValidaView').hidden=AN_MODE!=='anValida';
@@ -3779,10 +3763,6 @@ function renderAna(){
     if(viewPeriod){
       $('anTbl').innerHTML='<thead><tr><th>Mes</th><th class="n">#Pagos</th><th class="n">Monto</th></tr></thead><tbody><tr><td colspan="3" class="status">Carga estados de cuenta y asegúrate de tener el filtro de "solo abonos/depósitos" activo para ver el análisis.</td></tr></tbody>';
       $('anChart').innerHTML='';$('anTotal').textContent='';$('anProm').textContent='';$('anComments').innerHTML='';
-    } else if(AN_MODE==='anAlerts'){
-      $('anAlertKpis').innerHTML='';$('anAlertTbl').innerHTML='<thead><tr><th>Alerta</th></tr></thead><tbody><tr><td class="status">Sin datos para analizar.</td></tr></tbody>';
-    } else if(AN_MODE==='anCparty'){
-      $('anCpartyKpis').innerHTML='';$('anCpartyTbl').innerHTML='<thead><tr><th>Contraparte</th></tr></thead><tbody><tr><td class="status">Sin datos para analizar.</td></tr></tbody>';
     } else if(AN_MODE==='anCapacidad'){
       $('anCapKpis').innerHTML='';$('anCapTbl').innerHTML='<thead><tr><th>Categoría</th></tr></thead><tbody><tr><td class="status">Sin datos para analizar.</td></tr></tbody>';$('anCapComments').innerHTML='';$('anDscrOut').innerHTML='';
     } else if(AN_MODE==='anCruces'){
@@ -3816,10 +3796,6 @@ function renderAna(){
     $('anTotal').textContent=fmt(tot);
     $('anProm').textContent=fmt(prom);
     $('anComments').innerHTML=anaComments(bk,data.rows,g,data.colName);
-  } else if(AN_MODE==='anAlerts'){
-    renderAlerts(data.rows);
-  } else if(AN_MODE==='anCparty'){
-    renderCparty(data.rows);
   } else if(AN_MODE==='anCapacidad'){
     renderCapacidad(data.rows,data.si);
   } else if(AN_MODE==='anCruces'){
