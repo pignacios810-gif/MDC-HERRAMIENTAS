@@ -333,9 +333,35 @@ function pageIsEbcdic(items){
     }
   }
   if(total<30) return false;
-  return ebc/total>=0.30 && ebc>asciiAlpha;
+  // Umbral alto: para el caso "HSBC viejo" (todo el PDF es EBCDIC puro) el ratio supera 0.60
+  // fácilmente. El "HSBC moderno" mezcla ASCII legible con pocas cadenas EBCDIC y cae por debajo.
+  // Las cadenas EBCDIC sueltas del moderno se decodifican luego por item con strIsEbcdic().
+  return ebc/total>=0.60 && ebc>asciiAlpha;
 }
 function decodeEbcdicStr(s){let out=''; for(const c of s) out+=(EBCDIC_MAP[c]||c); return out;}
+// ¿Esta cadena específica parece codificada en EBCDIC? Útil para HSBC moderno que MEZCLA
+// texto ASCII legible (headers) con cadenas EBCDIC (datos del cliente, días del movimiento,
+// importes puntuales, etc.). Si TODOS los caracteres imprimibles son EBCDIC, decodifica aunque
+// sean sólo 1-2 caracteres (como los días "ðõ"=05).
+function strIsEbcdic(s){
+  if(!s) return false;
+  let total=0, ebc=0, asciiAlpha=0;
+  for(const c of s){
+    const code=c.charCodeAt(0);
+    if(code<=0x20) continue;
+    // K ('.'), @ (' '), [ ('$'), k (','), z (':'), ` ('-'), a ('/') son puntuación EBCDIC:
+    // no cuentan como ASCII alpha ni como EBCDIC para este cálculo.
+    if('K@[kz`a'.indexOf(c)>=0) continue;
+    total++;
+    if((code>=0x81&&code<=0x89)||(code>=0x91&&code<=0x99)||(code>=0xA2&&code<=0xA9)
+      ||(code>=0xC1&&code<=0xC9)||(code>=0xD1&&code<=0xD9)||(code>=0xE2&&code<=0xE9)
+      ||(code>=0xF0&&code<=0xF9)) ebc++;
+    else if((code>=0x30&&code<=0x39)||(code>=0x41&&code<=0x5A)||(code>=0x61&&code<=0x7A)) asciiAlpha++;
+  }
+  if(total===0) return false;
+  if(total<=2) return ebc===total;
+  return ebc>=total*0.5 && ebc>asciiAlpha;
+}
 async function readPdf(file,onPage){
   const buf=await file.arrayBuffer(), raw=new Uint8Array(buf);
   let bin='';const CH=0x8000;for(let i=0;i<raw.length;i+=CH) bin+=String.fromCharCode.apply(null,raw.subarray(i,i+CH));
@@ -343,10 +369,12 @@ async function readPdf(file,onPage){
   const doc=await pdfjsLib.getDocument({data:raw.slice(0)}).promise;
   const meta=await doc.getMetadata().catch(()=>({info:{}}));
   const pages=[];const badPages=[];
-  // Detectar EBCDIC (HSBC CUENTA MAESTRA) muestreando las 2 primeras páginas
+  // Detectar EBCDIC (HSBC CUENTA MAESTRA). Muestreamos hasta las primeras 5 páginas porque
+  // algunos PDFs de HSBC tienen carátulas de marketing en ASCII puro y el detalle EBCDIC
+  // arranca en la página 2 o 3.
   let docIsEbcdic=false;
   try{
-    for(let p=1;p<=Math.min(2,doc.numPages);p++){
+    for(let p=1;p<=Math.min(5,doc.numPages);p++){
       const pg=await doc.getPage(p); const tc=await pg.getTextContent({disableNormalization:true});
       if(pageIsEbcdic((tc&&tc.items)||[])){docIsEbcdic=true;break}
     }
@@ -361,7 +389,10 @@ async function readPdf(file,onPage){
     for(const i of ((tc&&tc.items)||[])){if(!i.str)continue;
       // caracteres de uso privado U+F020–U+F0FF (PDF reimpresos): equivalen al ASCII 0x20–0xFF
       let s=i.str.replace(/[\uf020-\uf0ff]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xF000)).normalize('NFKC');
+      // Decodificaci\u00f3n EBCDIC: a nivel de documento (HSBC viejo, todo EBCDIC) o por item
+      // individual (HSBC moderno, que mezcla ASCII legible con items EBCDIC en datos personales).
       if(docIsEbcdic) s=decodeEbcdicStr(s);
+      else if(strIsEbcdic(s)) s=decodeEbcdicStr(s);
       if(!s.trim())continue;
       const it={x:i.transform[4],t:ph-i.transform[5],w:i.width,s,f:i.fontName,h:Math.round(Math.hypot(i.transform[2],i.transform[3])*100)/100};
       const k=s+'|'+Math.round(it.x*2)+'|'+Math.round(it.t*2);if(seen.has(k))continue;seen.add(k);items.push(it)}
