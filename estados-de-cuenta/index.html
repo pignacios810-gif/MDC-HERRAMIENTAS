@@ -78,10 +78,6 @@ h2 .step{font:700 .7rem var(--f-mono);letter-spacing:.1em;color:var(--accent);ba
 @media (max-width:640px){.hdr-grid{grid-template-columns:1fr}}
 .hdr-note{margin:0;font-size:.84rem;color:var(--muted);line-height:1.5;display:flex;align-items:flex-start;gap:8px}
 .hdr-note-ic{color:var(--excel);flex-shrink:0;font-weight:700;line-height:1.5}
-/* Elementos de vista avanzada ocultos por defecto; se muestran al desbloquear junto con las tabs avanzadas */
-.adv-only{display:none !important}
-.adv-unlocked .adv-only{display:inherit !important}
-#advLockBtn:hover{color:var(--accent) !important;text-shadow:var(--glow-cyan)}
 /* (La gráfica es visible por default; la tabla + gráfica mantienen el grid de 2 columnas) */
 .lead{color:var(--muted);margin:4px 0 0}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px;display:grid;gap:12px;min-width:0;box-shadow:var(--shadow)}
@@ -220,14 +216,12 @@ details>summary{cursor:pointer;font-weight:600;font-size:.88rem;color:var(--acce
     <div id="tAna" hidden class="page" style="gap:12px">
       <div class="tabs" role="tablist" style="gap:0;position:relative">
         <button class="tab" role="tab" aria-selected="true" data-ta="anAnual" id="ta-an">📅 Anual</button>
-        <button class="tab tab-adv" role="tab" aria-selected="false" data-ta="anMensual" id="ta-mn" hidden>📆 Mensual</button>
-        <button class="tab tab-adv" role="tab" aria-selected="false" data-ta="anSemanal" id="ta-sm" hidden>🗓️ Semanal</button>
-        <button class="tab tab-adv" role="tab" aria-selected="false" data-ta="anCapacidad" id="ta-ca" hidden>💰 Capacidad</button>
+        <button class="tab" role="tab" aria-selected="false" data-ta="anMensual" id="ta-mn">📆 Mensual</button>
+        <button class="tab" role="tab" aria-selected="false" data-ta="anSemanal" id="ta-sm">🗓️ Semanal</button>
+        <button class="tab" role="tab" aria-selected="false" data-ta="anCapacidad" id="ta-ca">💰 Capacidad</button>
         <button class="tab" role="tab" aria-selected="false" data-ta="anValida" id="ta-vl">📊 Validación</button>
         <button class="tab" role="tab" aria-selected="false" data-ta="anVolumen" id="ta-vo">📈 Volumen</button>
         <button class="tab" role="tab" aria-selected="false" data-ta="anTraspasos" id="ta-tp">🔀 Traspasos</button>
-        <!-- Botón muy sutil para desbloquear vistas avanzadas con clave -->
-        <button type="button" id="advLockBtn" title="Vistas avanzadas (requiere clave)" aria-label="Desbloquear vistas avanzadas con clave" style="margin-left:auto;background:transparent;border:0;color:rgba(255,255,255,.3);font-size:1.1rem;line-height:1;letter-spacing:2px;padding:4px 8px;cursor:pointer;font-family:inherit;transition:color .2s,text-shadow .2s;align-self:center">⋯</button>
       </div>
       <!-- Vista por periodo (Anual/Mensual/Semanal) -->
       <div id="anChartView">
@@ -3392,89 +3386,6 @@ document.querySelectorAll('.tab[data-ta]').forEach(b=>b.onclick=()=>{
   AN_MODE=b.dataset.ta; renderAna();
 });
 document.getElementById('anMes').onchange=renderAna;
-
-/* ====================== Desbloqueo discreto de vistas avanzadas (PLD/forenses) ====================== */
-// Las sub-pestañas Alertas PLD, Contrapartes, Capacidad y Cruces entre bancos permanecen ocultas
-// hasta que el usuario desbloquee con una clave personal (SHA-256). La clave se define en el PRIMER uso
-// (nunca se guarda en claro; solo su hash en localStorage) y se verifica en los usos siguientes.
-// El estado "desbloqueado" dura esta sesión del navegador (sessionStorage).
-const ADV_PASS_KEY='advPassHash_v1';
-const ADV_UNLOCK_KEY='advUnlocked_v1';
-// Clave inicial pre-configurada ("1234"). Si no hay otra guardada, acepta esa por defecto.
-// El usuario puede cambiarla desde el flujo "Cambiar clave" (ver más abajo).
-const ADV_DEFAULT_HASH='03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4';
-try{if(!localStorage.getItem(ADV_PASS_KEY)) localStorage.setItem(ADV_PASS_KEY,ADV_DEFAULT_HASH)}catch(e){}
-async function _sha256(s){
-  const enc=new TextEncoder().encode(s);
-  const h=await crypto.subtle.digest('SHA-256',enc);
-  return Array.from(new Uint8Array(h)).map(b=>b.toString(16).padStart(2,'0')).join('');
-}
-function showAdvTabs(show){
-  document.querySelectorAll('.tab-adv').forEach(b=>b.hidden=!show);
-  // Mostrar/ocultar también elementos .adv-only (como la gráfica)
-  document.body.classList.toggle('adv-unlocked',!!show);
-  const btn=document.getElementById('advLockBtn');
-  if(btn){
-    if(show){
-      btn.textContent='⋯';
-      btn.style.color='var(--accent)';
-      btn.style.textShadow='var(--glow-cyan)';
-      btn.title='Vistas avanzadas desbloqueadas · clic para bloquear · Shift+clic para cambiar clave';
-    } else {
-      btn.textContent='⋯';
-      btn.style.color='rgba(255,255,255,.3)';
-      btn.style.textShadow='';
-      btn.title='Vistas avanzadas (requiere clave)';
-    }
-  }
-}
-// Al cargar, aplicar estado inicial
-try{if(sessionStorage.getItem(ADV_UNLOCK_KEY)==='1') showAdvTabs(true)}catch(e){}
-document.getElementById('advLockBtn').onclick=async(ev)=>{
-  const currentlyUnlocked = (()=>{try{return sessionStorage.getItem(ADV_UNLOCK_KEY)==='1'}catch(e){return false}})();
-  // Shift+Click (estando desbloqueado): cambiar clave
-  if(currentlyUnlocked && ev.shiftKey){
-    const curr=prompt('🔐 Clave actual:');
-    if(!curr) return;
-    const hCurr=await _sha256(curr);
-    if(hCurr!==localStorage.getItem(ADV_PASS_KEY)){
-      const btn=document.getElementById('advLockBtn');btn.style.color='rgba(255,80,80,.6)';setTimeout(()=>{btn.style.color='rgba(34,211,238,.65)'},600);
-      return;
-    }
-    const p1=prompt('Nueva clave (mínimo 4 caracteres):');
-    if(!p1||p1.length<4) return;
-    const p2=prompt('Confirma la nueva clave:');
-    if(p1!==p2){alert('Las claves no coinciden.');return}
-    try{localStorage.setItem(ADV_PASS_KEY,await _sha256(p1))}catch(e){}
-    alert('Clave actualizada.');
-    return;
-  }
-  if(currentlyUnlocked){
-    // Si ya está desbloqueado, volver a bloquear (sin pedir clave)
-    try{sessionStorage.removeItem(ADV_UNLOCK_KEY)}catch(e){}
-    showAdvTabs(false);
-    // Si la pestaña activa es una avanzada, volver a Anual
-    if(['anMensual','anSemanal','anCapacidad','anValida','anVolumen'].includes(AN_MODE)){
-      AN_MODE='anAnual';
-      document.querySelectorAll('.tab[data-ta]').forEach(x=>x.setAttribute('aria-selected',x.id==='ta-an'));
-      renderAna();
-    }
-    return;
-  }
-  const stored=localStorage.getItem(ADV_PASS_KEY);
-  const p=prompt('🔐 Introduce la clave para ver las vistas avanzadas:');
-  if(!p) return;
-  const h=await _sha256(p);
-  if(h===stored){
-    try{sessionStorage.setItem(ADV_UNLOCK_KEY,'1')}catch(e){}
-    showAdvTabs(true);
-  } else {
-    // Feedback muy discreto: parpadeo breve del botón
-    const btn=document.getElementById('advLockBtn');
-    btn.style.color='rgba(255,80,80,.6)';
-    setTimeout(()=>{btn.style.color='rgba(255,255,255,.3)'},600);
-  }
-};
 
 /* ====================== Utilidades CLABE + extracción de contrapartes ====================== */
 // Valida dígito verificador de una CLABE mexicana (18 dígitos; pesos 3,7,1 ciclo; cada producto mod 10; suma mod 10; (10-r)%10 == dígito 18)
