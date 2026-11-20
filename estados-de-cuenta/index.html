@@ -3902,7 +3902,18 @@ function renderTraspasos(){
   }
   const bancoRows=Object.values(porBanco).sort((a,b)=>b.dep-a.dep);
   const bancosLbl=bancoRows.map(b=>b.bank+(b.num?' · '+b.num:'')).join(', ');
-  $('anTpResumen').innerHTML=
+  // Banner con veredicto claro: SÍ o NO hay traspasos propios
+  const hayTraspasos=propios.length>0;
+  const bannerHtml=hayTraspasos
+    ? `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:8px;background:var(--bad-bg);border:1px solid rgba(255,138,192,.45);margin-bottom:8px">`
+      +`<span style="font-size:1.3rem">🔀</span>`
+      +`<div style="flex:1;line-height:1.35"><b style="color:var(--bad-ink);font-size:.95rem">Sí se detectaron traspasos entre las cuentas cargadas</b>`
+      +`<div style="font-size:.84rem;color:var(--muted);margin-top:2px">${propios.length} operaci${propios.length===1?'ón':'ones'}: ${nDepPropios} depósito(s) por ${fmt(depPropios)} y ${nRetPropios} retiro(s) por ${fmt(retPropios)}.</div></div></div>`
+    : `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:8px;background:var(--ok-bg);border:1px solid rgba(94,234,212,.45);margin-bottom:8px">`
+      +`<span style="font-size:1.3rem">✅</span>`
+      +`<div style="flex:1;line-height:1.35"><b style="color:var(--ok-ink);font-size:.95rem">No se detectaron traspasos entre las cuentas cargadas</b>`
+      +`<div style="font-size:.84rem;color:var(--muted);margin-top:2px">Todo el depósito bruto proviene de contrapartes externas. ${selves.length<2?'Nota: sólo cargaste un estado; los traspasos propios se detectan mejor cuando subes varias cuentas del mismo titular.':''}</div></div></div>`;
+  $('anTpResumen').innerHTML=bannerHtml+
     `<div class="row" style="gap:8px;align-items:baseline"><span style="font-size:1.1rem">📋</span><b style="font-size:1rem">Resumen</b></div>`+
     `<p style="margin:0;font-size:.92rem;line-height:1.55">Estados cargados (${nArchivos}): <b>${esc(bancosLbl)}</b>. El cliente recibió <b>${fmt(depBruto)}</b> en depósitos. De ese total, <b style="color:var(--magenta)">${fmt(depPropios)} (${pct.toFixed(1)}%)</b> son traspasos entre sus propias cuentas (no son ingreso real). <b>Ingreso neto externo: ${fmt(depNeto)}</b>. También envió <b>${fmt(retPropios)}</b> a sus propias cuentas.</p>`+
     // Tabla 1 — desglose por banco
