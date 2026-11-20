@@ -349,6 +349,10 @@ function strIsEbcdic(s){
   for(const c of s){
     const code=c.charCodeAt(0);
     if(code<=0x20) continue;
+    // 0x40 (@) es el espacio en EBCDIC; muchas descripciones EBCDIC vienen con padding de @
+    // (ej. "MERCADO*PAGO@@@@@@@@" → en EBCDIC esto es "MERCADO*PAGO        ").
+    // Lo saltamos para no diluir el ratio y no confundirlo con texto no-EBCDIC.
+    if(code===0x40) continue;
     total++;
     if((code>=0x81&&code<=0x89)||(code>=0x91&&code<=0x99)||(code>=0xA2&&code<=0xA9)
       ||(code>=0xC1&&code<=0xC9)||(code>=0xD1&&code<=0xD9)||(code>=0xE2&&code<=0xE9)
@@ -358,9 +362,9 @@ function strIsEbcdic(s){
   if(total===0) return false;
   // Cadena corta (1-2 caracteres): decodifica sólo si TODOS son EBCDIC
   if(total<=2) return ebc===total;
-  // Cadena larga: decodifica si el EBCDIC domina claramente (más de la mitad)
+  // Cadena larga: decodifica si el EBCDIC domina claramente (al menos la mitad)
   // y supera al ASCII alpha. Esto evita falsos positivos en palabras normales.
-  return ebc>total*0.5 && ebc>=asciiAlpha;
+  return ebc>=total*0.5 && ebc>=asciiAlpha && ebc>=3;
 }
 async function readPdf(file,onPage){
   const buf=await file.arrayBuffer(), raw=new Uint8Array(buf);
