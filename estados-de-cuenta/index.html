@@ -894,8 +894,11 @@ const BBVA={id:'bbva',name:'BBVA',
     acct.name='BBVA · '+acct.num;
     let hdr=null,cur=null,inbody=false;
     for(const pg of pdf.pages){
-      let pghdr=false;
       const lines=wordLines(pg);
+      // Nueva página: cortamos la continuación para que el encabezado de la página
+      // (logo, PAGINA, No. de Cuenta, Libretón Básico, etc.) no se pegue a la última
+      // descripción de la página anterior.
+      cur=null;
       for(let li=0;li<lines.length;li++){
         const l=lines[li];
         const t=l.text,ws=l.w;
@@ -909,7 +912,7 @@ const BBVA={id:'bbva',name:'BBVA',
             if(L2.w.some(w=>/^OPER/.test(w.s))&&L2.w.some(w=>w.s==='CARGOS')&&L2.w.some(w=>w.s==='ABONOS')){
               const combined=[...ws,...L2.w];
               hdr={};combined.forEach(w=>{if(!hdr[w.s])hdr[w.s]=w});
-              pghdr=true;inbody=true;li++;continue;
+              inbody=true;li++;continue;
             }
           }
           continue;
@@ -917,11 +920,17 @@ const BBVA={id:'bbva',name:'BBVA',
         if(ws[0].s==='OPER'&&/LIQ/.test(t)&&/CARGOS/.test(t)&&/ABONOS/.test(t)){
           // pdf.js separa acentos: combinar fragmentos adyacentes
           const merged=[];for(const w of ws){const prev=merged[merged.length-1];if(prev&&w.x0-prev.x1<2.5)merged[merged.length-1]={...prev,s:prev.s+w.s,x1:w.x1};else merged.push({...w})}
-          hdr={};merged.forEach(w=>hdr[w.s]=w);pghdr=true;inbody=true;continue;
+          hdr={};merged.forEach(w=>hdr[w.s]=w);inbody=true;continue;
         }
-        if(!pghdr||!inbody)continue;
+        // IMPORTANTE: antes exigíamos que el header apareciera en CADA página (pghdr), lo
+        // que rompía el "Libretón Básico Cuenta Digital" — ese formato sólo pone el
+        // encabezado en la página 1 y el resto son filas puras. Ahora basta con que el
+        // header haya aparecido en alguna página anterior y seguimos leyendo.
+        if(!inbody||!hdr)continue;
         if(/^Total de Movimientos/.test(t)||/TOTAL IMPORTE/.test(t)||/TOTAL MOVIMIENTOS/.test(t)){inbody=false;continue}
-        if(/^BBVA MEXICO|^Av\. Paseo|Estado de Cuenta|MAESTRA PYME|^PAGINA|^Estimado Cliente|medio ambiente|^La GAT Real|^Nota:|^No\. Cuenta|^No\. Cliente|^Su Estado de Cuenta|^Tambi|^el cual puede|^Con BBVA|www\.bbva\.mx|^Cuida el/.test(t))continue;
+        if(/^BBVA MEXICO|^Av\. Paseo|Estado de Cuenta|MAESTRA PYME|Libret.n|Cuenta Digital|^PAGINA|^Estimado Cliente|medio ambiente|^La GAT Real|^Nota:|^No\. Cuenta|^No\. Cliente|^Su Estado de Cuenta|^Tambi|^el cual puede|^Con BBVA|www\.bbva\.mx|^Cuida el/.test(t))continue;
+        // Línea standalone con sólo "BBVA" (logo reimpreso en cada página)
+        if(ws.length===1&&/^BBVA$/i.test(ws[0].s))continue;
         // Normalizar amounts OCR (O→0) antes de clasificar
         if(pg.ocr){for(const w of ws){w.s=BBVA_AMT_FIX(w.s)}}
         const amts=ws.filter(w=>AMT_W.test(w.s)&&w.x1>hdr.CARGOS.x0-10);
@@ -944,19 +953,44 @@ const BBVA={id:'bbva',name:'BBVA',
           cur={page:pg.n,fecha:operTxt,oper:operTxt,liq:liqTxt,cod:'',day:dd,ref:'',desc:[dw.map(w=>w.s).join(' ')],dep:null,ret:null,saldo:null,saldol:null,depS:'',retS:'',saldoS:'',saldolS:'',
                dtTxt:yr?`${String(dd).padStart(2,'0')}/${String(mi+1).padStart(2,'0')}/${yr}`:operTxt,
                dt:yr?new Date(Date.UTC(yr,mi,dd)):null};
+          // Buscar encabezados de saldo tolerando variantes de rendering (pdf.js a veces
+          // extrae "OPERACIÓN" como "OPERACION", "OPERACILN" o similares; igual para
+          // "LIQUIDACIÓN"). Cualquier key del hdr que empiece con OPERACI o LIQUIDACI
+          // y esté a la derecha de ABONOS es la columna de saldo correspondiente.
+          const absABO=hdr.ABONOS?hdr.ABONOS.x1:0;
+          let SALDO_O=null, SALDO_L=null;
+          for(const k of Object.keys(hdr)){
+            if(hdr[k].x1<=absABO) continue;
+            if(/^OPERACI/i.test(k)) { if(!SALDO_O||hdr[k].x1<SALDO_O.x1) SALDO_O=hdr[k]; }
+            else if(/^LIQUIDACI/i.test(k)) { if(!SALDO_L||hdr[k].x1<SALDO_L.x1) SALDO_L=hdr[k]; }
+          }
           for(const w of amts){
-            const k=['CARGOS','ABONOS','OPERACIÓN','LIQUIDACIÓN'].reduce((a,x)=>hdr[x]&&Math.abs(hdr[x].x1-w.x1)<Math.abs(hdr[a].x1-w.x1)?x:a,'CARGOS');
-            const key={CARGOS:'ret',ABONOS:'dep','OPERACIÓN':'saldo','LIQUIDACIÓN':'saldol'}[k];
-            cur[key]=amtVal(w.s);cur[key+'S']=w.s;addAmt(acct,w,k,pg.n);
+            const cols=[['CARGOS',hdr.CARGOS,'ret'],['ABONOS',hdr.ABONOS,'dep'],['SALDO_O',SALDO_O,'saldo'],['SALDO_L',SALDO_L,'saldol']].filter(x=>x[1]);
+            const best=cols.reduce((a,b)=>Math.abs(b[1].x1-w.x1)<Math.abs(a[1].x1-w.x1)?b:a,cols[0]);
+            const key=best[2];
+            cur[key]=amtVal(w.s);cur[key+'S']=w.s;
+            const addKey=best[0]==='SALDO_O'?'OPERACIÓN':best[0]==='SALDO_L'?'LIQUIDACIÓN':best[0];
+            addAmt(acct,w,addKey,pg.n);
           }
           acct.rows.push(cur);
         } else if(cur&&!amts.length&&rest.length){
           cur.desc.push(rest.map(w=>w.s).join(' '));
         } else if(cur&&amts.length&&!rest.some(w=>bbvaParseDate(w.s))){
+          const absABO=hdr.ABONOS?hdr.ABONOS.x1:0;
+          let SALDO_O=null, SALDO_L=null;
+          for(const k of Object.keys(hdr)){
+            if(hdr[k].x1<=absABO) continue;
+            if(/^OPERACI/i.test(k)) { if(!SALDO_O||hdr[k].x1<SALDO_O.x1) SALDO_O=hdr[k]; }
+            else if(/^LIQUIDACI/i.test(k)) { if(!SALDO_L||hdr[k].x1<SALDO_L.x1) SALDO_L=hdr[k]; }
+          }
           for(const w of amts){
-            const k=['OPERACIÓN','LIQUIDACIÓN'].reduce((a,x)=>Math.abs(hdr[x].x1-w.x1)<Math.abs(hdr[a].x1-w.x1)?x:a,'OPERACIÓN');
-            const key={'OPERACIÓN':'saldo','LIQUIDACIÓN':'saldol'}[k];
-            if(cur[key]==null){cur[key]=amtVal(w.s);cur[key+'S']=w.s;addAmt(acct,w,k,pg.n)}
+            const cols=[['SALDO_O',SALDO_O,'saldo'],['SALDO_L',SALDO_L,'saldol']].filter(x=>x[1]);
+            if(!cols.length)continue;
+            const best=cols.reduce((a,b)=>Math.abs(b[1].x1-w.x1)<Math.abs(a[1].x1-w.x1)?b:a,cols[0]);
+            const key=best[2];
+            if(cur[key]==null){cur[key]=amtVal(w.s);cur[key+'S']=w.s;
+              const addKey=best[0]==='SALDO_O'?'OPERACIÓN':'LIQUIDACIÓN';
+              addAmt(acct,w,addKey,pg.n)}
           }
           if(rest.length)cur.desc.push(rest.map(w=>w.s).join(' '));
         }
