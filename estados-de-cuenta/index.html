@@ -270,6 +270,12 @@ details>summary{cursor:pointer;font-weight:600;font-size:.88rem;color:var(--acce
         <div class="tw"><table id="anTpMismoTbl"></table></div>
         <h3 style="margin:18px 0 6px;font-size:.98rem;color:var(--ink)">Traspasos propios identificados (cruce entre estados cargados)</h3>
         <div class="tw"><table id="anTpPropiosTbl"></table></div>
+        <h3 style="margin:18px 0 6px;font-size:.98rem;color:var(--ink)">Resumen por banco (de quién recibe, a quién envía)</h3>
+        <p class="status" style="margin:-2px 0 6px;font-size:.82rem">Totales agregados por banco de la contraparte (identificado por los primeros 3 dígitos de la CLABE, o por el nombre del banco citado en la descripción cuando no hay CLABE). Muestra claramente de qué instituciones entró dinero y a cuáles salió.</p>
+        <div class="tw"><table id="anTpBancoTbl"></table></div>
+        <h3 style="margin:18px 0 6px;font-size:.98rem;color:var(--ink)">Contrapartes bidireccionales (le envió y le recibió)</h3>
+        <p class="status" style="margin:-2px 0 6px;font-size:.82rem">Contrapartes con las que el titular tuvo flujo en los dos sentidos dentro del periodo: le envió dinero Y también recibió de ellas. Suelen ser cuentas de un mismo grupo (socios, proveedores con ajuste, cuentas operativas propias no detectadas por nombre).</p>
+        <div class="tw"><table id="anTpBidirTbl"></table></div>
         <h3 style="margin:18px 0 6px;font-size:.98rem;color:var(--ink)">Transferencias con terceros (contrapartes externas)</h3>
         <div class="tw"><table id="anTpExtTbl"></table></div>
         <p class="note" style="margin-top:10px">Se detectan <b>traspasos propios</b> cuando la contraparte mencionada en la descripción (CLABE, cuenta, RFC o nombre) coincide con otro de los estados que subiste. La confianza es <b>Alta</b> cuando cuadra CLABE o cuenta, <b>Media</b> cuando cuadra RFC o nombre. Los <b>envíos a la misma razón social</b> se identifican dentro de un solo estado: el beneficiario del SPEI tiene el mismo nombre que el titular que aparece en la carátula. Las <b>transferencias con terceros</b> agrupan la contraparte por CLABE o por nombre de beneficiario, y marcan el banco cuando la CLABE lo permite identificar (primeros 3 dígitos). Para análisis de crédito, el <b>ingreso neto externo</b> descuenta los traspasos propios del depósito bruto, porque no son ingreso real.</p>
@@ -3863,9 +3869,19 @@ function cpartyParse(desc,ref){
   const nRE=/(?:DEL\s+CLIENTE|AL\s+CLIENTE|ENVIADO\s+A|RECIBIDO\s+DE|BENEFICIARIO[:\s]+|ORDENANTE[:\s]+|A\s+NOMBRE\s+DE)\s*:?\s*([A-ZÁÉÍÓÚÑ&][A-ZÁÉÍÓÚÑ&a-záéíóúñ0-9\s\.\-\/]{3,120}?)(?=\(|\s+(?:DE LA CUENTA|DE LA CLABE|CUENTA BENEFICIARIA|RFC|CON RFC|CLAVE DE RASTREO|REFERENCIA|REF\b|CONCEPTO|BCO|CVE|HR LIQ|HORA:|INSTITUCI|\(Dato|\(DATO)|[\n]|$)/gi;
   let m;while((m=nRE.exec(t))){const n=normName(m[1]);if(n.length>=4&&n.length<=120) names.add(n)}
   // Bancos mencionados por nombre (BBVA, BANORTE, SANTANDER, etc.)
+  // Nota: no exigimos word boundary al inicio, porque los lectores de BBVA/otros
+  // pegan la palabra al tipo de operación: "SPEI RECIBIDOBANAMEX", "SPEI ENVIADOCITI", etc.
+  // Para MERCADO PAGO admitimos separador opcional (espacio, asterisco o nada): "MERCADO*PAGO",
+  // "MERCADOPAGO", "MERCADO PAGO".
   const bancos=new Set();
-  const bRE=/\b(BBVA|BANORTE|SANTANDER|HSBC|BANAMEX|CITI|SCOTIABANK|INBURSA|BANREGIO|HEY\s*BANCO|MIFEL|BANBAJIO|AFIRME|MULTIVA|BANCOPPEL|AZTECA|MERCADO\s*PAGO|STP|NU\s*MEXICO|ALBO|UAL[AÁ])\b/gi;
-  while((m=bRE.exec(t))) bancos.add(m[1].toUpperCase().replace(/\s+/g,' '));
+  const bRE=/(BBVA|BANORTE|SANTANDER|HSBC|BANAMEX|CITIBANAMEX|CITI\b|SCOTIABANK|INBURSA|BANREGIO|HEY\s*BANCO|MIFEL|BANBAJIO|AFIRME|MULTIVA|BANCOPPEL|AZTECA|MERCADO[\s\*_-]?PAGO|STP\b|NU\s*M[EÉ]XICO|ALBO|UAL[AÁ])\b/gi;
+  while((m=bRE.exec(t))){
+    let b=m[1].toUpperCase().replace(/[\s\*_-]+/g,' ').replace(/\s+/g,' ').trim();
+    // Normalizar variantes a nombres canónicos
+    if(b==='CITIBANAMEX') b='BANAMEX';
+    if(b==='MERCADOPAGO') b='MERCADO PAGO';
+    bancos.add(b);
+  }
   return {clabes,cuentas,rfcs,names:[...names],bancos:[...bancos]};
 }
 // Palabras/frases que descartan una línea como posible razón social (son fijas del encabezado).
@@ -4017,6 +4033,8 @@ function renderTraspasos(){
     $('anTpKpis').innerHTML='';
     $('anTpMismoTbl').innerHTML='<thead><tr><th>Envíos a la misma razón social</th></tr></thead><tbody><tr><td class="status" style="padding:16px">Carga un estado para buscar envíos a cuenta propia detectados por razón social.</td></tr></tbody>';
     $('anTpPropiosTbl').innerHTML='<thead><tr><th>Traspasos</th></tr></thead><tbody><tr><td class="status" style="padding:16px">Carga uno o más estados de cuenta para buscar traspasos y contrapartes.</td></tr></tbody>';
+    $('anTpBancoTbl').innerHTML='<thead><tr><th>Resumen por banco</th></tr></thead><tbody><tr><td class="status" style="padding:16px">Sin datos.</td></tr></tbody>';
+    $('anTpBidirTbl').innerHTML='<thead><tr><th>Contrapartes bidireccionales</th></tr></thead><tbody><tr><td class="status" style="padding:16px">Sin datos.</td></tr></tbody>';
     $('anTpExtTbl').innerHTML='<thead><tr><th>Contrapartes</th></tr></thead><tbody><tr><td class="status" style="padding:16px">Sin datos.</td></tr></tbody>';
     return;
   }
@@ -4183,6 +4201,75 @@ function renderTraspasos(){
     $('anTpExtTbl').innerHTML='<thead><tr><th>#</th><th>Beneficiario / Ordenante</th><th>Banco</th><th>CLABE / Cuenta</th><th>RFC</th><th class="n">#Env</th><th class="n">Enviado</th><th class="n">#Rec</th><th class="n">Recibido</th><th>Meses</th></tr></thead><tbody>'+
       rows.map((r,i)=>`<tr><td class="n">${i+1}</td><td>${esc(r.nombre||'(sin nombre)')}</td><td>${esc(r.bank||'')}</td><td class="mono" style="font-size:.78rem">${esc(r.clabe||r.cuenta||'')}</td><td class="mono" style="font-size:.78rem">${esc(r.rfc||'')}</td><td class="n">${r.nEnv||''}</td><td class="n">${r.envi>0?fmt(r.envi):''}</td><td class="n">${r.nRec||''}</td><td class="n">${r.reci>0?fmt(r.reci):''}</td><td style="font-size:.78rem" title="${esc([...r.meses].sort().map(fmtMes).join(', '))}">${esc(fmtMeses(r.meses))}</td></tr>`).join('')+'</tbody>';
     attachTableAutoFilter({tableId:'anTpExtTbl',skipCols:new Set([0])});
+  }
+
+  // =========================================================================
+  // Resumen por banco — para cada movimiento identificamos el banco destino
+  // (de la CLABE del beneficiario) o el banco origen (de la CLABE del
+  // ordenante) y agregamos los totales. Incluye traspasos propios, mismo
+  // titular y externos — el usuario lo pidió como "de qué bancos recibí y
+  // a qué bancos envié". Se excluyen los que no se puede resolver (rows
+  // sin CLABE y sin banco nombrado — p.ej. retiros en efectivo o pagos
+  // internos sin descripción identificable).
+  const porBankCp={};
+  for(const mv of moves){
+    const cp=cpartyParse(mv.desc,mv.ref);
+    let bank=(cp.clabes[0]?bankFromClabe(cp.clabes[0]):'')||cp.bancos[0]||'';
+    if(!bank) continue; // sin banco identificable no podemos atribuir
+    bank=String(bank).toUpperCase().replace(/\s+/g,' ').trim();
+    if(!porBankCp[bank]) porBankCp[bank]={bank,env:0,rec:0,nEnv:0,nRec:0,cpsEnv:new Set(),cpsRec:new Set(),meses:new Set()};
+    const cpKey=cp.clabes[0]||cp.cuentas[0]||cp.names[0]||'';
+    if(mv.ret>0){porBankCp[bank].env+=mv.ret;porBankCp[bank].nEnv++;if(cpKey)porBankCp[bank].cpsEnv.add(cpKey)}
+    if(mv.dep>0){porBankCp[bank].rec+=mv.dep;porBankCp[bank].nRec++;if(cpKey)porBankCp[bank].cpsRec.add(cpKey)}
+    if(mv.dt){const y=mv.dt.getUTCFullYear(),m=mv.dt.getUTCMonth();porBankCp[bank].meses.add(`${y}-${String(m+1).padStart(2,'0')}`)}
+  }
+  const bankRows=Object.values(porBankCp).sort((a,b)=>(b.env+b.rec)-(a.env+a.rec));
+  if(!bankRows.length){
+    $('anTpBancoTbl').innerHTML='<thead><tr><th>Resumen por banco</th></tr></thead><tbody><tr><td class="status" style="padding:16px">No se encontraron movimientos con banco de contraparte identificable (CLABE o nombre del banco en la descripción).</td></tr></tbody>';
+  } else {
+    const totEnv=bankRows.reduce((s,b)=>s+b.env,0);
+    const totRec=bankRows.reduce((s,b)=>s+b.rec,0);
+    const totNEnv=bankRows.reduce((s,b)=>s+b.nEnv,0);
+    const totNRec=bankRows.reduce((s,b)=>s+b.nRec,0);
+    $('anTpBancoTbl').innerHTML='<thead><tr><th>Banco contraparte</th><th class="n">#Env</th><th class="n">Enviado</th><th class="n">Contrapartes dist.</th><th class="n">#Rec</th><th class="n">Recibido</th><th class="n">Contrapartes dist.</th><th>Flujo</th><th>Meses</th></tr></thead><tbody>'+
+      bankRows.map(b=>{
+        const flow=b.env>0&&b.rec>0?chip('warn','Bidireccional'):b.env>0?chip('bad','Solo envío'):chip('ok','Solo recepción');
+        return `<tr><td><b>${esc(b.bank)}</b></td><td class="n">${b.nEnv||''}</td><td class="n">${b.env>0?fmt(b.env):''}</td><td class="n">${b.cpsEnv.size||''}</td><td class="n">${b.nRec||''}</td><td class="n">${b.rec>0?fmt(b.rec):''}</td><td class="n">${b.cpsRec.size||''}</td><td>${flow}</td><td style="font-size:.78rem" title="${esc([...b.meses].sort().map(fmtMes).join(', '))}">${esc(fmtMeses(b.meses))}</td></tr>`;
+      }).join('')+
+      `<tr style="font-weight:700;border-top:1px solid var(--accent)"><td>Total (${bankRows.length} bancos)</td><td class="n">${totNEnv||''}</td><td class="n">${totEnv>0?fmt(totEnv):''}</td><td class="n">—</td><td class="n">${totNRec||''}</td><td class="n">${totRec>0?fmt(totRec):''}</td><td class="n">—</td><td></td><td></td></tr>`+
+      '</tbody>';
+    attachTableAutoFilter({tableId:'anTpBancoTbl'});
+  }
+
+  // =========================================================================
+  // Contrapartes bidireccionales — son las de la tabla de externos cuyo
+  // flujo es en ambos sentidos Y están identificadas de forma específica
+  // (CLABE de 18 dígitos o nombre propio con ≥2 palabras). Excluimos los
+  // buckets que solo tienen el nombre del banco como identificador, porque
+  // ahí junta muchas contrapartes distintas y el "bidireccional" sería
+  // falso. Cuenta/referencia de 10-14 dígitos tampoco bastan porque muchos
+  // estados meten números de referencia que el parser confunde con cuenta.
+  const BANCOS_GENERICOS=/^(BBVA|BANORTE|SANTANDER|HSBC|BANAMEX|CITI|CITIBANAMEX|SCOTIABANK|INBURSA|BANREGIO|HEY BANCO|MIFEL|BANBAJIO|AFIRME|MULTIVA|BANCOPPEL|AZTECA|MERCADO PAGO|STP|NU MEXICO|ALBO|UALA|UALÁ)$/i;
+  const bidirRows=Object.values(ext).filter(r=>{
+    if(!(r.nEnv>0&&r.nRec>0)) return false;
+    if(r.clabe && r.clabe.length>=18) return true;
+    if(r.nombre && r.nombre.split(/\s+/).filter(w=>w.length>=3).length>=2 && !BANCOS_GENERICOS.test(r.nombre)) return true;
+    return false;
+  }).sort((a,b)=>(b.envi+b.reci)-(a.envi+a.reci));
+  if(!bidirRows.length){
+    const hayBancosBidir=bankRows.some(b=>b.env>0&&b.rec>0);
+    const nota=hayBancosBidir
+      ? 'No se encontraron contrapartes individuales (por CLABE o nombre) con flujo en ambos sentidos. Mira el "Resumen por banco" arriba: varios bancos sí son bidireccionales pero por contrapartes distintas.'
+      : 'No se encontraron contrapartes con flujo en ambos sentidos dentro del periodo analizado.';
+    $('anTpBidirTbl').innerHTML='<thead><tr><th>Contrapartes bidireccionales</th></tr></thead><tbody><tr><td class="status" style="padding:16px">'+nota+'</td></tr></tbody>';
+  } else {
+    $('anTpBidirTbl').innerHTML='<thead><tr><th>#</th><th>Contraparte</th><th>Banco</th><th>CLABE / Cuenta</th><th class="n">#Env</th><th class="n">Enviado</th><th class="n">#Rec</th><th class="n">Recibido</th><th class="n">Neto (Rec − Env)</th><th>Meses</th></tr></thead><tbody>'+
+      bidirRows.map((r,i)=>{
+        const neto=r.reci-r.envi;
+        const netoColor=neto>0?'var(--ok-ink)':neto<0?'var(--bad-ink)':'var(--muted)';
+        return `<tr><td class="n">${i+1}</td><td>${esc(r.nombre||'(sin nombre)')}</td><td>${esc(r.bank||'')}</td><td class="mono" style="font-size:.78rem">${esc(r.clabe||r.cuenta||'')}</td><td class="n">${r.nEnv}</td><td class="n">${fmt(r.envi)}</td><td class="n">${r.nRec}</td><td class="n">${fmt(r.reci)}</td><td class="n" style="color:${netoColor};font-weight:600">${fmt(neto)}</td><td style="font-size:.78rem" title="${esc([...r.meses].sort().map(fmtMes).join(', '))}">${esc(fmtMeses(r.meses))}</td></tr>`;
+      }).join('')+'</tbody>';
+    attachTableAutoFilter({tableId:'anTpBidirTbl',skipCols:new Set([0])});
   }
 }
 
