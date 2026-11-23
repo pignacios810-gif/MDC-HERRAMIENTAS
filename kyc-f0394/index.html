@@ -155,7 +155,7 @@ button{cursor:pointer}
   <p class="priv"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg><span>Los archivos se leen dentro de tu navegador. No se suben ni se guardan en ningún servidor.</span></p>
 </div></section>
 <header class="top"><div class="top-in">
-  <div class="brand" title="Versión de la herramienta"><b>KYC Persona Física · F/0394</b><span>Sofimex, Institución de Garantías · Fiduciario · <b class="ver">Versión 23-nov-2026 (67)</b></span></div>
+  <div class="brand" title="Versión de la herramienta"><b>KYC Persona Física · F/0394</b><span>Sofimex, Institución de Garantías · Fiduciario · <b class="ver">Versión 23-nov-2026 (68)</b></span></div>
   <div class="meter"><div class="bar"><i id="barFill"></i></div><span id="meterTxt">0 de 0 campos</span></div>
   <div class="actions">
     <button class="btn primary" id="btnPdf" type="button">Descargar PDF lleno</button>
@@ -226,7 +226,7 @@ const YN1 = [["/1", "Sí"], ["/0", "No"]];
 S("", "Encabezado del formato");
 T("NÚMERO DE FID  MANDATO", "Número de FID / mandato", { fx: "F/0394", w: 2, ai: false });
 T("FECHA", "Fecha (obligatoria)", { w: 2, ai: false, fecha: true });
-T("NOMBRE DEL EJECUTIVO", "Nombre del ejecutivo", { fx: "LIC. RUBEN A. GUILLEN VILLARINO", w: 2, ai: false });
+T("NOMBRE DEL EJECUTIVO", "Nombre del ejecutivo", { fx: "LIC. ARMANDO CRISTOBAL RAFAEL", force: true, w: 2, ai: false });
 
 S("", "Participante del contrato que se identifica");
 T("FIDEICOMITENTE", "Fideicomitente", { fx: "X", w: 2, ai: false });
@@ -1594,8 +1594,8 @@ $("btnPdf").addEventListener("click", async () => {
         } catch (e) { console.warn(f.k, e); }
         continue;
       }
-      // «Fines» (IX): el texto de la herramienta reemplaza siempre el que trae el PDF original
-      const forcePdf = f.k === "IX FINES QUE PRETENDE DAR AL FIDE";
+      // «Fines» (IX) y los campos con force (Nombre del ejecutivo): el texto de la herramienta reemplaza siempre el que trae el PDF original
+      const forcePdf = f.k === "IX FINES QUE PRETENDE DAR AL FIDE" || !!f.force;
       if (isLocked(f) && !forcePdf && !(st.src[f.k] && st.src[f.k].file === "ID Anticipa")) continue;
       let v = f.pre ? (st.v[f.k] ? f.pre + norm(st.v[f.k]) : "") : (st.v[f.k] !== undefined ? st.v[f.k] : (forcePdf ? val(f) : ""));
       v = WIN(norm(v).toUpperCase());
