@@ -155,7 +155,7 @@ button{cursor:pointer}
   <p class="priv"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg><span>Los archivos se leen dentro de tu navegador. No se suben ni se guardan en ningún servidor.</span></p>
 </div></section>
 <header class="top"><div class="top-in">
-  <div class="brand" title="Versión de la herramienta"><b>KYC Persona Física · F/0394</b><span>Sofimex, Institución de Garantías · Fiduciario · <b class="ver">Versión 16-nov-2026 (66)</b></span></div>
+  <div class="brand" title="Versión de la herramienta"><b>KYC Persona Física · F/0394</b><span>Sofimex, Institución de Garantías · Fiduciario · <b class="ver">Versión 23-nov-2026 (67)</b></span></div>
   <div class="meter"><div class="bar"><i id="barFill"></i></div><span id="meterTxt">0 de 0 campos</span></div>
   <div class="actions">
     <button class="btn primary" id="btnPdf" type="button">Descargar PDF lleno</button>
@@ -317,13 +317,13 @@ S("VIII", "Nexos y relaciones (PPE o PPE por similitud)");
 R("GRUPO 6", "¿Usted es persona políticamente expuesta?", YN1, { fx: "/0" });
 ["DEPENDENCIA:Dependencia:6", "PUESTO QUE DESEMPEÑA:Puesto:4", "PERÍODO DEL EJERCICIO:Período:2", "PRINCIPALES FUNCIONES:Principales funciones:6"]
   .forEach(s => { const [k, l, w] = s.split(":"); T(k, l, { na: true, w: +w }); });
-R("GRUPO 6AB", "¿Su cónyuge o algún pariente hasta 2.º grado desempeña o desempeñó un cargo público destacado?", [["/0", "Sí"], ["/1", "No"]], { fx: "/0" });
-T("NOMBRE", "Nombre del familiar PPE", { w: 6, h: "Nombre del familiar del titular que es o fue persona políticamente expuesta" });
-T("PARENTESCO RELACIÓN", "Parentesco / relación", { w: 6, h: "Parentesco del familiar PPE con el titular" });
-T("DEPENDENCIA_2", "Dependencia", { w: 6, h: "Dependencia de gobierno donde el familiar PPE ocupa/ocupó el cargo" });
-T("PUESTO QUE DESEMPEÑA_2", "Puesto que desempeña", { w: 4, h: "Cargo del familiar PPE" });
-T("PERÍODO DEL EJERCICIO_2", "Período del ejercicio", { w: 2, h: "Periodo del cargo del familiar PPE" });
-T("PRINCIPALES FUNCIONES_2", "Principales funciones", { w: 6, h: "Funciones del cargo del familiar PPE" });
+R("GRUPO 6AB", "¿Su cónyuge o algún pariente hasta 2.º grado desempeña o desempeñó un cargo público destacado?", [["/0", "Sí"], ["/1", "No"]], { fx: "/1", force: true });
+T("NOMBRE", "Nombre del familiar PPE", { na: true, w: 6, h: "Nombre del familiar del titular que es o fue persona políticamente expuesta" });
+T("PARENTESCO RELACIÓN", "Parentesco / relación", { na: true, w: 6, h: "Parentesco del familiar PPE con el titular" });
+T("DEPENDENCIA_2", "Dependencia", { na: true, w: 6, h: "Dependencia de gobierno donde el familiar PPE ocupa/ocupó el cargo" });
+T("PUESTO QUE DESEMPEÑA_2", "Puesto que desempeña", { na: true, w: 4, h: "Cargo del familiar PPE" });
+T("PERÍODO DEL EJERCICIO_2", "Período del ejercicio", { na: true, w: 2, h: "Periodo del cargo del familiar PPE" });
+T("PRINCIPALES FUNCIONES_2", "Principales funciones", { na: true, w: 6, h: "Funciones del cargo del familiar PPE" });
 R("GRUPO 7", "¿Está relacionada con alguna sociedad mercantil?", YN1, { fx: "/0", w: 6 });
 T("CUAL", "¿Cuál?", { na: true, w: 3 });
 T("SI SU RESPUESTA FUE SI CUAL ES SU RELACIÓN", "Relación", { na: true, w: 3 });
@@ -537,7 +537,7 @@ function renderChecks() {
   else if (!/^\d{9}$/.test(ine1)) add("warn", `INE del titular: "${ine1}" debe ser solo los 9 dígitos después de IDMEX.`);
   const ine2 = g("NOMBRE Y NÚMERO DE LA IDENTIFICACIÓN OFICIAL  AUTORIDAD QUE LA EMITE_2");
   if (ine2 && !/^\d{9}$/.test(ine2)) add("warn", `INE del cónyuge: "${ine2}" debe ser solo los 9 dígitos después de IDMEX.`);
-  if ((st.v["GRUPO 6AB"] ?? "/0") === "/0" && !g("NOMBRE")) add("warn", "Se declaró familiar PPE (Sí) pero falta su nombre, parentesco y cargo (sección VIII).");
+  if ((st.v["GRUPO 6AB"] ?? "/1") === "/0" && !g("NOMBRE")) add("warn", "Se declaró familiar PPE (Sí) pero falta su nombre, parentesco y cargo (sección VIII).");
   if (!/^\d{2}\/\d{2}\/\d{4}$/.test(norm(st.v["FECHA"] || ""))) add("warn", "Falta la fecha del formato (obligatoria para descargar el PDF).");
   // Montos del cotizador: coherencia (VP = Monto + comisión + intereses, así que el Monto siempre es menor que el VP)
   { const a = k => parseAmt(st.v[k] || ""), vp = a("VALOR_3"), mo = a("MONTO DE LA OPERACIÓN  CONTRATO"), ve = a("MONTO APROXIMADO DE MOVIMIENTOS MENSUALES");
@@ -1584,7 +1584,8 @@ $("btnPdf").addEventListener("click", async () => {
     for (const f of FIELDS) {
       if (f.virt) continue;
       if (f.type === "radio") {
-        const v = st.v[f.k]; if (v === undefined || v === f.fx || isLocked(f)) continue;
+        // force: el valor fijo de la herramienta reemplaza el que trae el PDF original (p. ej. familiar PPE = No)
+        const v = st.v[f.k] ?? (f.force ? f.fx : undefined); if (v === undefined || (!f.force && (v === f.fx || isLocked(f)))) continue;
         try {
           const af = form.getRadioGroup(f.k).acroField;
           af.dict.set(PDFName.of("V"), PDFName.of(v.slice(1)));
