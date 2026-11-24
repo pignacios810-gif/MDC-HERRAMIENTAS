@@ -155,7 +155,7 @@ button{cursor:pointer}
   <p class="priv"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg><span>Los archivos se leen dentro de tu navegador. No se suben ni se guardan en ningún servidor.</span></p>
 </div></section>
 <header class="top"><div class="top-in">
-  <div class="brand" title="Versión de la herramienta"><b>KYC Persona Física · F/0394</b><span>Sofimex, Institución de Garantías · Fiduciario · <b class="ver">Versión 23-nov-2026 (68)</b></span></div>
+  <div class="brand" title="Versión de la herramienta"><b>KYC Persona Física · F/0394</b><span>Sofimex, Institución de Garantías · Fiduciario · <b class="ver">Versión 24-nov-2026 (69)</b></span></div>
   <div class="meter"><div class="bar"><i id="barFill"></i></div><span id="meterTxt">0 de 0 campos</span></div>
   <div class="actions">
     <button class="btn primary" id="btnPdf" type="button">Descargar PDF lleno</button>
@@ -1195,6 +1195,21 @@ function localExtract(text) {
       if (dg > 3 || lt < 6) continue;  // renglones 1 y 2 del reverso son casi puros números
       const m = fixL(t).match(/[A-ZÑ]+(?:<[A-ZÑ]+)*<<[A-ZÑ]+(?:<[A-ZÑ]+)*<*/);
       if (m && m[0].length >= 10) nlC.push(m[0]);
+    }
+  }
+  // Renglón 3 sin «<<»: el OCR a veces lee «<<» como «S<» (LOPEZ<ASCENCIOS<JOSE). Se corrige solo si el frente de la INE
+  // confirma el apellido sin la letra de más (ASCENCIO aparece en el frente y ASCENCIOS no)
+  if (!nlC.length) {
+    const fw = new Set(T0.split("\n").filter(l => !/</.test(l)).flatMap(l => l.match(/[A-ZÁÉÍÓÚÜÑ]{3,}/g) || []).map(w => normKeep(w).replace(/[^A-Z]/g, "")));
+    for (const raw of T0.replace(/[‹〈]/g, "<").split("\n")) {
+      const t = fixL(raw.replace(/[\s|]+/g, ""));
+      if (/[I1L][D0O]M[E3]X/.test(t)) continue;
+      const m = t.match(/[A-ZÑ]{2,}(?:<[A-ZÑ]{2,}){2,}/); if (!m || m[0].length < 10) continue;
+      const pz = m[0].split("<");
+      for (let j = 0; j < pz.length - 1; j++) {
+        const w = pz[j];
+        if (w.length > 3 && /[SKCE]$/.test(w) && fw.has(w.slice(0, -1)) && !fw.has(w)) { nlC.push([...pz.slice(0, j), w.slice(0, -1)].join("<") + "<<" + pz.slice(j + 1).join("<")); break; }
+      }
     }
   }
   // El más repetido y, a igualdad, el más largo (uno cortado por un error de OCR queda más corto)
