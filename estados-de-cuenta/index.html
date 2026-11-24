@@ -4094,12 +4094,20 @@ function renderTraspasos(){
   const bankRows=Object.values(porBankCp).sort((a,b)=>(b.env+b.rec)-(a.env+a.rec));
   const recFrom=bankRows.filter(b=>b.rec>0).sort((a,b)=>b.rec-a.rec);
   const sendTo=bankRows.filter(b=>b.env>0).sort((a,b)=>b.env-a.env);
-  const recFromLbl=recFrom.length
-    ? recFrom.slice(0,8).map(b=>`<b>${esc(b.bank)}</b> ${fmt(b.rec)} <span style="color:var(--muted)">(${b.nRec})</span>`).join(' · ')+(recFrom.length>8?` <span style="color:var(--muted)">y ${recFrom.length-8} más</span>`:'')
-    : '<span class="status" style="font-size:.84rem">— sin bancos identificados en las recepciones —</span>';
-  const sendToLbl=sendTo.length
-    ? sendTo.slice(0,8).map(b=>`<b>${esc(b.bank)}</b> ${fmt(b.env)} <span style="color:var(--muted)">(${b.nEnv})</span>`).join(' · ')+(sendTo.length>8?` <span style="color:var(--muted)">y ${sendTo.length-8} más</span>`:'')
-    : '<span class="status" style="font-size:.84rem">— sin bancos identificados en los envíos —</span>';
+  const totRec=recFrom.reduce((s,b)=>s+b.rec,0), totNRec=recFrom.reduce((s,b)=>s+b.nRec,0);
+  const totEnv=sendTo.reduce((s,b)=>s+b.env,0), totNEnv=sendTo.reduce((s,b)=>s+b.nEnv,0);
+  const recFromHtml=recFrom.length
+    ? `<table style="font-size:.86rem;width:100%"><thead><tr><th style="text-align:left">Banco</th><th class="n">#Op</th><th class="n">Monto recibido</th></tr></thead><tbody>`
+      +recFrom.map(b=>`<tr><td><b>${esc(b.bank)}</b></td><td class="n">${b.nRec}</td><td class="n">${fmt(b.rec)}</td></tr>`).join('')
+      +`<tr style="font-weight:700;border-top:1px solid var(--ok-ink)"><td>Total</td><td class="n">${totNRec}</td><td class="n" style="color:var(--ok-ink)">${fmt(totRec)}</td></tr>`
+      +`</tbody></table>`
+    : '<p class="status" style="margin:6px 0;font-size:.84rem">— No se identificó banco en ninguna recepción —</p>';
+  const sendToHtml=sendTo.length
+    ? `<table style="font-size:.86rem;width:100%"><thead><tr><th style="text-align:left">Banco</th><th class="n">#Op</th><th class="n">Monto enviado</th></tr></thead><tbody>`
+      +sendTo.map(b=>`<tr><td><b>${esc(b.bank)}</b></td><td class="n">${b.nEnv}</td><td class="n">${fmt(b.env)}</td></tr>`).join('')
+      +`<tr style="font-weight:700;border-top:1px solid var(--bad-ink)"><td>Total</td><td class="n">${totNEnv}</td><td class="n" style="color:var(--bad-ink)">${fmt(totEnv)}</td></tr>`
+      +`</tbody></table>`
+    : '<p class="status" style="margin:6px 0;font-size:.84rem">— No se identificó banco en ningún envío —</p>';
   // Desglose por banco + cuenta (una fila por cada "self" detectada)
   const porBanco={};
   for(const mv of moves){
@@ -4142,12 +4150,18 @@ function renderTraspasos(){
     bancoRows.map(b=>`<tr><td><b>${esc(b.bank)}</b>${b.num?` · <span class="mono" style="font-size:.78rem">${esc(b.num)}</span>`:''}</td><td class="n">${b.nDep||''}</td><td class="n">${b.dep>0?fmt(b.dep):'—'}</td><td class="n">${b.nRet||''}</td><td class="n">${b.ret>0?fmt(b.ret):'—'}</td></tr>`).join('')+
     (bancoRows.length>1?`<tr style="font-weight:700;border-top:1px solid var(--accent)"><td>Total de los ${bancoRows.length} estados</td><td class="n">${bancoRows.reduce((s,b)=>s+b.nDep,0)}</td><td class="n">${fmt(bancoRows.reduce((s,b)=>s+b.dep,0))}</td><td class="n">${bancoRows.reduce((s,b)=>s+b.nRet,0)}</td><td class="n">${fmt(bancoRows.reduce((s,b)=>s+b.ret,0))}</td></tr>`:'')+
     `</tbody></table></div>`+
-    // De qué bancos entró dinero y a qué bancos salió — una línea rápida pensada para el dictamen
-    `<div style="margin-top:10px;padding:10px 12px;border-radius:8px;background:rgba(94,234,212,.06);border:1px solid rgba(94,234,212,.3);font-size:.88rem;line-height:1.6">`+
-      `<div><span style="font-size:1rem">⬇️</span> <b style="color:var(--ok-ink)">Recibió de:</b> ${recFromLbl}</div>`+
-      `<div style="margin-top:4px"><span style="font-size:1rem">⬆️</span> <b style="color:var(--bad-ink)">Envió a:</b> ${sendToLbl}</div>`+
-      `<p style="margin:6px 0 0;font-size:.78rem;color:var(--muted)">Clasificación por los primeros 3 dígitos de la CLABE o por el nombre del banco citado en la descripción. El número entre paréntesis es cuántas operaciones.</p>`+
+    // Dos tablas simples lado a lado: de qué bancos entró dinero y a qué bancos salió.
+    `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-top:10px">`+
+      `<div style="padding:10px 12px;border-radius:8px;background:rgba(94,234,212,.06);border:1px solid rgba(94,234,212,.3)">`+
+        `<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><span style="font-size:1.1rem">⬇️</span><b style="color:var(--ok-ink);font-size:.95rem">Bancos de los que recibió dinero</b></div>`+
+        `<div class="tw">${recFromHtml}</div>`+
+      `</div>`+
+      `<div style="padding:10px 12px;border-radius:8px;background:rgba(255,138,192,.06);border:1px solid rgba(255,138,192,.3)">`+
+        `<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><span style="font-size:1.1rem">⬆️</span><b style="color:var(--bad-ink);font-size:.95rem">Bancos a los que mandó dinero</b></div>`+
+        `<div class="tw">${sendToHtml}</div>`+
+      `</div>`+
     `</div>`+
+    `<p style="margin:4px 0 0;font-size:.78rem;color:var(--muted)">Clasificación por los primeros 3 dígitos de la CLABE del beneficiario/ordenante o por el nombre del banco citado en la descripción. Se excluyen operaciones sin banco identificable (p.ej. retiros en efectivo o pagos internos sin CLABE).</p>`+
     // Tabla 2 — composición del ingreso
     `<div class="tw" style="margin-top:4px"><table style="font-size:.88rem">`+
     `<thead><tr><th>Composición del ingreso</th><th class="n">Monto</th><th class="n">Operaciones</th></tr></thead><tbody>`+
