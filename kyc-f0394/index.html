@@ -155,7 +155,7 @@ button{cursor:pointer}
   <p class="priv"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg><span>Los archivos se leen dentro de tu navegador. No se suben ni se guardan en ningún servidor.</span></p>
 </div></section>
 <header class="top"><div class="top-in">
-  <div class="brand" title="Versión de la herramienta"><b>KYC Persona Física · F/0394</b><span>Sofimex, Institución de Garantías · Fiduciario · <b class="ver">Versión 24-nov-2026 (69)</b></span></div>
+  <div class="brand" title="Versión de la herramienta"><b>KYC Persona Física · F/0394</b><span>Sofimex, Institución de Garantías · Fiduciario · <b class="ver">Versión 27-nov-2026 (70)</b></span></div>
   <div class="meter"><div class="bar"><i id="barFill"></i></div><span id="meterTxt">0 de 0 campos</span></div>
   <div class="actions">
     <button class="btn primary" id="btnPdf" type="button">Descargar PDF lleno</button>
@@ -382,10 +382,11 @@ const AIF = FIELDS.filter(f => f.ai || (f.virt && f.ai !== false));
 /* ---------- Estado ---------- */
 const KEY = "kyc-f0394-v1";
 let st = { v: {}, src: {}, unl: {}, sugs: [], files: [], docs: {} };
-try { const raw = localStorage.getItem(KEY); if (raw) st = Object.assign(st, JSON.parse(raw)); } catch (e) {}
+// Cada vez que se abre la página empieza en blanco: se borra lo que haya quedado guardado del caso anterior
+try { localStorage.removeItem(KEY); } catch (e) {}
 st.docs = st.docs || {};
 st.files = (st.files || []).map(f => f.status === "run" || f.status === "wait" ? { ...f, status: "err", desc: "Interrumpido. Vuelve a cargarlo." } : f);
-function save() { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} }
+function save() { /* los datos del caso solo viven mientras la página está abierta; no se guardan en el navegador */ }
 
 const isLocked = f => (f.fx !== undefined || f.na) && !st.unl[f.k];
 function val(f) {
