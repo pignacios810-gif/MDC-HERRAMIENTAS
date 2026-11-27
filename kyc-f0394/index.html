@@ -155,7 +155,7 @@ button{cursor:pointer}
   <p class="priv"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg><span>Los archivos se leen dentro de tu navegador. No se suben ni se guardan en ningún servidor.</span></p>
 </div></section>
 <header class="top"><div class="top-in">
-  <div class="brand" title="Versión de la herramienta"><b>KYC Persona Física · F/0394</b><span>Sofimex, Institución de Garantías · Fiduciario · <b class="ver">Versión 27-nov-2026 (71)</b></span></div>
+  <div class="brand" title="Versión de la herramienta"><b>KYC Persona Física · F/0394</b><span>Sofimex, Institución de Garantías · Fiduciario · <b class="ver">Versión 27-nov-2026 (72)</b></span></div>
   <div class="meter"><div class="bar"><i id="barFill"></i></div><span id="meterTxt">0 de 0 campos</span></div>
   <div class="actions">
     <button class="btn primary" id="btnPdf" type="button">Descargar PDF lleno</button>
@@ -538,6 +538,15 @@ function renderChecks() {
   else if (!/^\d{9}$/.test(ine1)) add("warn", `INE del titular: "${ine1}" debe ser solo los 9 dígitos después de IDMEX.`);
   const ine2 = g("NOMBRE Y NÚMERO DE LA IDENTIFICACIÓN OFICIAL  AUTORIDAD QUE LA EMITE_2");
   if (ine2 && !/^\d{9}$/.test(ine2)) add("warn", `INE del cónyuge: "${ine2}" debe ser solo los 9 dígitos después de IDMEX.`);
+  // Nombre del titular: sale solo de la Constancia; la INE solo se compara
+  if (st.ineName) {
+    const ineFull = ["NOMBRES", "APELLIDO PATERNO", "APELLIDO MATERNO"].map(k => st.ineName[k] || "").join(" ").replace(/\s+/g, " ").trim();
+    const difs = ["NOMBRES", "APELLIDO PATERNO", "APELLIDO MATERNO"].filter(k => st.ineName[k] && g(k) && cmp(st.ineName[k]) !== cmp(g(k)));
+    const lbl = { "NOMBRES": "Nombre(s)", "APELLIDO PATERNO": "Apellido paterno", "APELLIDO MATERNO": "Apellido materno" };
+    if (!g("NOMBRES") && !g("APELLIDO PATERNO")) add("warn", `Falta la Constancia de Situación Fiscal: el nombre del titular solo se toma de ahí. La INE dice: ${ineFull}.`);
+    else if (difs.length) add("warn", "El nombre de la INE no coincide con la Constancia: " + difs.map(k => `${lbl[k]} INE «${st.ineName[k]}» vs CSF «${g(k)}»` + (normKeep(g(k)).startsWith(normKeep(st.ineName[k])) ? " (en la INE puede venir cortado)" : "")).join("; ") + ".");
+    else add("ok", "El nombre de la INE coincide con la Constancia.");
+  }
   if ((st.v["GRUPO 6AB"] ?? "/1") === "/0" && !g("NOMBRE")) add("warn", "Se declaró familiar PPE (Sí) pero falta su nombre, parentesco y cargo (sección VIII).");
   if (!/^\d{2}\/\d{2}\/\d{4}$/.test(norm(st.v["FECHA"] || ""))) add("warn", "Falta la fecha del formato (obligatoria para descargar el PDF).");
   // Montos del cotizador: coherencia (VP = Monto + comisión + intereses, así que el Monto siempre es menor que el VP)
@@ -1530,6 +1539,12 @@ async function processFile(file, rec) {
           for (const k of Object.keys(csfN)) { delete found[k]; delete rules[k]; }
         }
       } }
+    // El nombre del titular ya no se toma de la INE (ni de otro documento que no sea la CSF): solo se guarda para avisar si es distinto
+    if (!csfN) {
+      const nm = {};
+      for (const k of ["NOMBRES", "APELLIDO PATERNO", "APELLIDO MATERNO"]) { const it = found[k] || rules[k]; if (it && it.value) nm[k] = norm(String(it.value)).toUpperCase(); delete found[k]; delete rules[k]; }
+      if (Object.keys(nm).length && st.docs.ine === rec.name) st.ineName = { ...nm, file: rec.name };
+    }
     const useRules = Object.keys(rules).length >= 2 || !/\.pdf$/i.test(rec.name);
     if (useRules) for (const k in rules) delete found[k];
     const { applied, queued } = merge(found, rec.name);
