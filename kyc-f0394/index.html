@@ -155,7 +155,7 @@ button{cursor:pointer}
   <p class="priv"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg><span>Los archivos se leen dentro de tu navegador. No se suben ni se guardan en ningún servidor.</span></p>
 </div></section>
 <header class="top"><div class="top-in">
-  <div class="brand" title="Versión de la herramienta"><b>KYC Persona Física · F/0394</b><span>Sofimex, Institución de Garantías · Fiduciario · <b class="ver">Versión 27-nov-2026 (70)</b></span></div>
+  <div class="brand" title="Versión de la herramienta"><b>KYC Persona Física · F/0394</b><span>Sofimex, Institución de Garantías · Fiduciario · <b class="ver">Versión 27-nov-2026 (71)</b></span></div>
   <div class="meter"><div class="bar"><i id="barFill"></i></div><span id="meterTxt">0 de 0 campos</span></div>
   <div class="actions">
     <button class="btn primary" id="btnPdf" type="button">Descargar PDF lleno</button>
@@ -1515,6 +1515,21 @@ async function processFile(file, rec) {
     delete found["MONTO DE LA OPERACIÓN  CONTRATO"];
     if (rules.VALOR_3) rules["MONTO DE LA OPERACIÓN  CONTRATO"] = { value: rules.VALOR_3.value, ev: "Monto de la operación = " + rules.VALOR_3.ev };
     else delete rules["MONTO DE LA OPERACIÓN  CONTRATO"];
+    // Constancia de Situación Fiscal: Nombre(s), Primer Apellido y Segundo Apellido mandan sobre la INE
+    // (el Alias se arma solo con el Nombre(s)). Solo si la constancia es de una persona física
+    let csfN = null;
+    { const TU = (text + "\n" + ocrRules).toUpperCase();
+      if (/CONSTANCIA DE SITUACI|CEDULA DE IDENTIFICACION FISCAL/.test(normKeep(TU))) {
+        const W = "[A-ZÑÁÉÍÓÚÜ][A-ZÑÁÉÍÓÚÜ.'\\- ]*?";
+        const STOP = "(?=[ \\t]*(?:PRIMER\\s+APELLIDO|SEGUNDO\\s+APELLIDO|FECHA|ESTATUS|NOMBRE\\s+COMERCIAL|CURP|RFC|\\n|$))";
+        const get = lbl => { const m = TU.match(new RegExp(lbl + "[ \\t]*:?[ \\t]*(" + W + ")" + STOP)); return m ? m[1].replace(/\s+/g, " ").trim() : ""; };
+        const nom = get("NOMBRE[ \\t]*\\([ \\t]*S[ \\t]*\\)"), ap1 = get("PRIMER[ \\t]+APELLIDO"), ap2 = get("SEGUNDO[ \\t]+APELLIDO");
+        if (nom && ap1) {
+          csfN = { "NOMBRES": { value: nom, ev: "CSF · Nombre (s): " + nom }, "APELLIDO PATERNO": { value: ap1, ev: "CSF · Primer Apellido: " + ap1 } };
+          if (ap2) csfN["APELLIDO MATERNO"] = { value: ap2, ev: "CSF · Segundo Apellido: " + ap2 };
+          for (const k of Object.keys(csfN)) { delete found[k]; delete rules[k]; }
+        }
+      } }
     const useRules = Object.keys(rules).length >= 2 || !/\.pdf$/i.test(rec.name);
     if (useRules) for (const k in rules) delete found[k];
     const { applied, queued } = merge(found, rec.name);
@@ -1522,6 +1537,7 @@ async function processFile(file, rec) {
     let ruled = 0;
     if (useRules) ruled = applyRules(rules, rec.name);
     else { const sub = {}; for (const k of ALWAYS) if (rules[k]) { sub[k] = rules[k]; delete found[k]; } ruled = applyRules(sub, rec.name); }
+    if (csfN) { ruled += applyRules(csfN, rec.name); st.docs.csfNombre = rec.name; }
     if (ex.lookups) {
       const LBL = { vp: "VP / Valor Pagaré", monto: "Monto", ventas: "Ventas mensuales" };
       for (const k of ["vp", "monto", "ventas"]) {
